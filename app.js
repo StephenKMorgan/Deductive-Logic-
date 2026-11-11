@@ -303,7 +303,7 @@
         ${sel ? `<button class="copy-btn" data-act="copy" data-n="${n}" aria-label="Copy line ${n} into the input">Copy</button>` : ''}
       </li>`;
     }).join('');
-    const toks = g.tokens.map((t, i) => (i === g.caret ? '<span class="caret"></span>' : '') + `<span class="${/[∧∨→↔]/.test(t) ? 'op' : 't'}">${T(t)}</span>`).join('') + (g.caret === g.tokens.length ? '<span class="caret"></span>' : '');
+    const toks = g.tokens.map((t, i) => (i === g.caret ? '<span class="caret"></span>' : '') + `<span class="${/[∧∨→↔]/.test(t) ? 'op' : 't'}" data-i="${i}">${T(t)}</span>`).join('') + (g.caret === g.tokens.length ? '<span class="caret"></span>' : '');
     const fb = g.feedback;
     const fbHtml = fb ? `<div class="fb fb-${fb.type}" role="status"><span>${fb.html}</span>${fb.fill ? '<button class="mini" data-act="fill">Fill it in</button>' : ''}</div>`
       : g.tokens.length || g.cites.length || g.rule || g.lines.length > nPrem ? ''
@@ -326,7 +326,7 @@
       <section class="composer" aria-label="Write the next line">
         ${fbHtml}
         <div class="input-row">
-          <div class="input" aria-label="New line formula" aria-live="polite">${g.tokens.length ? toks : '<span class="caret"></span><span class="ph">Write line ' + (g.lines.length + 1) + '</span>'}</div>
+          <div class="input" data-act="caret" aria-label="New line formula. Tap a symbol to move the cursor there." aria-live="polite">${g.tokens.length ? toks : '<span class="caret"></span><span class="ph">Write line ' + (g.lines.length + 1) + '</span>'}</div>
         </div>
         <div class="rule-row">${cat.spec.rules.length <= 5 ? `<div class="chips" id="rule-chips">${rules}</div>` : rulePicker(cat.spec.rules, g.rule)}</div>
         <div class="rule-help">${selR ? `<span><b>${esc(selR.name)}</b> · cite ${selR.n === 1 ? 'one line' : 'two lines'}</span><span class="fx">${T(selR.from)} ${selR.kind === 'rep' ? '⟺' : '⟹'} ${T(selR.to)}</span>` : `Citing: ${g.cites.length ? g.cites.slice().sort((a, b) => a - b).join(', ') : 'none yet'}`}</div>
@@ -428,9 +428,9 @@
     if (c2) c2.scrollLeft = cx;
   }
 
-  function act(a, el) {
+  function act(a, el, ev) {
     const g = game;
-    if (g && g.feedback && (g.feedback.type === 'good' || g.feedback.type === 'info') && ['key', 'back', 'left', 'right', 'rule', 'pick', 'cite', 'copy'].includes(a)) g.feedback = null;
+    if (g && g.feedback && (g.feedback.type === 'good' || g.feedback.type === 'info') && ['key', 'back', 'left', 'right', 'rule', 'pick', 'cite', 'copy', 'caret'].includes(a)) g.feedback = null;
     switch (a) {
       case 'nav': return go(el.dataset.to);
       case 'lesson': return go('lesson', { id: el.dataset.id });
@@ -461,6 +461,16 @@
         if (f) { g.tokens = f.tokens.slice(); g.caret = g.tokens.length; g.rule = f.rule; g.cites = f.cites.slice(); }
         return persist();
       }
+      case 'caret': {
+        // Tap a symbol: cursor goes on the side of it you tapped. Tap empty space: cursor goes to the end.
+        const tok = ev && ev.target.closest('[data-i]');
+        if (!tok) g.caret = g.tokens.length;
+        else {
+          const r = tok.getBoundingClientRect();
+          g.caret = +tok.dataset.i + (ev.clientX > r.left + r.width / 2 ? 1 : 0);
+        }
+        return persist();
+      }
       case 'add': return addLine();
       case 'undo': return undoLine();
       case 'hint': return hint();
@@ -483,7 +493,7 @@
   $app.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el || el.disabled) return;
-    act(el.dataset.act, el);
+    act(el.dataset.act, el, e);
   });
 
   // Hardware keyboard support while solving
