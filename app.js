@@ -523,6 +523,16 @@
     if (k === 'Enter') { e.preventDefault(); return addLine(); }
   });
 
+  // Used by the Android app: the system back gesture steps back through screens.
+  // Returns false on the home screen so Android can close the app.
+  window.ThereforeBack = function () {
+    if (screen.name === 'home') return false;
+    const fromDaily = game && game.catId === 'daily';
+    if (screen.name === 'play' || screen.name === 'result') go(fromDaily ? 'daily' : 'home');
+    else go('home');
+    return true;
+  };
+
   if (game && !game.done) screen = { name: 'home' };
   render();
 

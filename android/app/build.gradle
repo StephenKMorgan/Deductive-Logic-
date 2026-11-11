@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.therefore.logic'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.therefore.logic'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// The web app (repo root) is the single source of truth. Copy it into the APK's
+// assets on every build so the Android app always matches the web version.
+def webAssets = layout.buildDirectory.dir('generated/webassets')
+def copyWebApp = tasks.register('copyWebApp', Copy) {
+    from(rootProject.file('..')) {
+        include 'index.html', 'engine.js', 'content.js', 'app.js', 'icon.svg'
+    }
+    into webAssets.map { it.dir('www') }
+}
+android.sourceSets.main.assets.srcDir(webAssets)
+tasks.named('preBuild') { dependsOn copyWebApp }
+tasks.configureEach { t ->
+    if (t.name.toLowerCase().contains('assets') || t.name.toLowerCase().contains('lint')) {
+        if (t.name != 'copyWebApp') t.dependsOn copyWebApp
+    }
+}

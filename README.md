@@ -39,6 +39,16 @@ The app is a static web app (PWA), so any static host works. With GitHub Pages:
 
 To run it locally: `python3 -m http.server` in this folder, then open http://localhost:8000.
 
+## Android app
+
+`android/` is a Gradle project (Java, no extra libraries) that wraps the web app in a full-screen WebView. Each build copies the web files from the repo root into the APK, so there is only one copy of the app to maintain. It runs offline, keeps progress on the phone, and the system back gesture steps back through the app's screens.
+
+**Get an APK without installing anything:** every push runs the **Android APK** workflow (`.github/workflows/android.yml`). Open the run under the repo's **Actions** tab and download **therefore-debug-apk** from *Artifacts*. Unzip it, copy `app-debug.apk` to your phone, and open it. Android will ask you to allow installs from that app (Files or Chrome) the first time.
+
+**Build it yourself:** open the `android/` folder in Android Studio and press Run, or run `cd android && ./gradlew assembleDebug` (needs JDK 17 and the Android SDK).
+
+**Publishing to Google Play** needs a signed release bundle (`./gradlew bundleRelease`) and a signing key. Android Studio's *Build → Generate Signed Bundle* walks you through it.
+
 ## Files
 
 | File | Purpose |
@@ -48,6 +58,7 @@ To run it locally: `python3 -m http.server` in this folder, then open http://loc
 | `app.js` | The user interface |
 | `index.html` | Page and styles |
 | `sw.js`, `manifest.webmanifest`, `icon*` | Offline support and home-screen install |
+| `android/` | Android app (Gradle project) |
 | `tests/engine.test.js` | `node tests/engine.test.js`: checks the rules and generates over 1,000 puzzles, verifying every model proof |
 
 ## How puzzles are generated
