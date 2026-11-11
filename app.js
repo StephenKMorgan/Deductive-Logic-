@@ -298,7 +298,7 @@
       const n = i + 1, sel = g.cites.includes(n);
       return `<li class="${sel ? 'sel' : ''}${i === g.lines.length - 1 && i >= nPrem ? ' fresh' : ''}${i === nPrem - 1 ? ' last-prem' : ''}">
         <button class="line-btn" data-act="cite" data-n="${n}" aria-pressed="${sel}" aria-label="Line ${n}: ${T(L.show(l.f))}. Tap to cite.">
-          <span class="ln">${n}.</span><span class="lf">${F(l.f)}</span><span class="lj">${esc(justText(l))}${i === nPrem - 1 ? ` <span class="therefore">∴ ${F(p.conclusion)}</span>` : ''}</span>
+          <span class="ln">${n}.</span><span class="lf">${F(l.f)}</span><span class="lj">${esc(justText(l))}</span>
         </button>
         ${sel ? `<button class="copy-btn" data-act="copy" data-n="${n}" aria-label="Copy line ${n} into the input">Copy</button>` : ''}
       </li>`;
@@ -306,6 +306,7 @@
     const toks = g.tokens.map((t, i) => (i === g.caret ? '<span class="caret"></span>' : '') + `<span class="${/[∧∨→↔]/.test(t) ? 'op' : 't'}">${T(t)}</span>`).join('') + (g.caret === g.tokens.length ? '<span class="caret"></span>' : '');
     const fb = g.feedback;
     const fbHtml = fb ? `<div class="fb fb-${fb.type}" role="status"><span>${fb.html}</span>${fb.fill ? '<button class="mini" data-act="fill">Fill it in</button>' : ''}</div>`
+      : g.tokens.length || g.cites.length || g.rule || g.lines.length > nPrem ? ''
       : `<div class="fb fb-info" role="status"><span>Tap lines to cite them, choose a rule, then write the new line.</span></div>`;
     const rules = cat.spec.rules.map((r) => `<button class="chip${g.rule === r ? ' on' : ''}" data-act="rule" data-r="${r}" aria-pressed="${g.rule === r}" title="${esc(ruleName(r))}">${r}</button>`).join('');
     const letters = 'PQRSTU'.slice(0, Math.max(cat.spec.letters, ...[...p.premises.concat([p.conclusion]).reduce((s, f) => L.atomsOf(f, s), new Set())].map((l) => 'PQRSTU'.indexOf(l) + 1))).split('');
@@ -327,8 +328,8 @@
         <div class="input-row">
           <div class="input" aria-label="New line formula" aria-live="polite">${g.tokens.length ? toks : '<span class="caret"></span><span class="ph">Write line ' + (g.lines.length + 1) + '</span>'}</div>
         </div>
-        <div class="rule-row"><div class="chips scroll-x" id="rule-chips">${rules}</div></div>
-        <div class="rule-help">${selR ? `<b>${esc(selR.name)}</b> <span class="fx">${T(selR.from)} ${selR.kind === 'rep' ? '⟺' : '⟹'} ${T(selR.to)}</span> · cite ${selR.n === 1 ? 'one line' : 'two lines'}` : `Citing: ${g.cites.length ? g.cites.slice().sort((a, b) => a - b).join(', ') : 'none yet'}`}</div>
+        <div class="rule-row">${cat.spec.rules.length <= 5 ? `<div class="chips" id="rule-chips">${rules}</div>` : rulePicker(cat.spec.rules, g.rule)}</div>
+        <div class="rule-help">${selR ? `<span><b>${esc(selR.name)}</b> · cite ${selR.n === 1 ? 'one line' : 'two lines'}</span><span class="fx">${T(selR.from)} ${selR.kind === 'rep' ? '⟺' : '⟹'} ${T(selR.to)}</span>` : `Citing: ${g.cites.length ? g.cites.slice().sort((a, b) => a - b).join(', ') : 'none yet'}`}</div>
         <div class="keypad">
           ${letters.map((l) => key(l)).join('')}
           ${key('¬', 'not', 'op')}${key('∧', 'and', 'op')}${key('∨', 'or', 'op')}${key('→', 'if then', 'op')}${key('↔', 'if and only if', 'op')}${key('(', 'open bracket')}${key(')', 'close bracket')}
@@ -337,6 +338,18 @@
           <button class="key add" data-act="add" style="grid-column: span ${7 - ((letters.length + 11) % 7)}">Add line</button>
         </div>
       </section>`;
+  }
+
+  function rulePicker(list, current) {
+    const group = (kind, label) => {
+      const rs = list.filter((r) => L.RULES[r].kind === kind);
+      return rs.length ? `<optgroup label="${label}">${rs.map((r) => `<option value="${r}"${current === r ? ' selected' : ''}>${r} · ${esc(ruleName(r))}</option>`).join('')}</optgroup>` : '';
+    };
+    return `<label class="picker${current ? ' on' : ''}"><span class="sr">Rule</span>
+      <select id="rule-select" data-act="pick">
+        <option value=""${current ? '' : ' selected'}>Choose a rule…</option>
+        ${group('inf', 'Rules of inference')}${group('rep', 'Replacement rules')}
+      </select></label>`;
   }
 
   const TRAP_LESSONS = {
@@ -417,6 +430,7 @@
 
   function act(a, el) {
     const g = game;
+    if (g && g.feedback && (g.feedback.type === 'good' || g.feedback.type === 'info') && ['key', 'back', 'left', 'right', 'rule', 'pick', 'cite', 'copy'].includes(a)) g.feedback = null;
     switch (a) {
       case 'nav': return go(el.dataset.to);
       case 'lesson': return go('lesson', { id: el.dataset.id });
@@ -431,6 +445,7 @@
       case 'left': g.caret = Math.max(0, g.caret - 1); return persist();
       case 'right': g.caret = Math.min(g.tokens.length, g.caret + 1); return persist();
       case 'rule': g.rule = g.rule === el.dataset.r ? null : el.dataset.r; return persist();
+      case 'pick': g.rule = el.value || null; return persist();
       case 'cite': {
         const n = +el.dataset.n;
         g.cites = g.cites.includes(n) ? g.cites.filter((x) => x !== n) : g.cites.concat(n);
@@ -462,6 +477,9 @@
     }
   }
 
+  $app.addEventListener('change', (e) => {
+    if (e.target.id === 'rule-select') act('pick', e.target);
+  });
   $app.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el || el.disabled) return;
