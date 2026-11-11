@@ -1,0 +1,263 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+
+package com.therefore.logic.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.therefore.logic.content.Course
+import com.therefore.logic.content.Curriculum
+import com.therefore.logic.data.GameState
+import com.therefore.logic.data.Progress
+import com.therefore.logic.ui.components.CardShape
+import com.therefore.logic.ui.components.Eyebrow
+import com.therefore.logic.ui.components.GradeBadge
+import com.therefore.logic.ui.components.Ledger
+import com.therefore.logic.ui.components.LedgerRow
+import com.therefore.logic.ui.components.LevelDots
+import com.therefore.logic.ui.components.LogicText
+import com.therefore.logic.ui.components.Panel
+import com.therefore.logic.ui.components.RuleCard
+import com.therefore.logic.ui.components.SectionTitle
+import com.therefore.logic.ui.components.Tag
+import com.therefore.logic.ui.components.TipBox
+import com.therefore.logic.ui.theme.LocalPalette
+import com.therefore.logic.ui.theme.Mono
+import java.time.LocalDate
+import java.time.format.TextStyle as DateStyle
+import java.util.Locale
+
+@Composable
+fun BrandHeader(mark: String, title: String, subtitle: String, action: @Composable () -> Unit = {}) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(p.accent), contentAlignment = Alignment.Center) {
+            Text(mark, color = p.onAccent, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = Mono)
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = p.muted)
+        }
+        action()
+    }
+}
+
+@Composable
+fun HomeScreen(
+    progress: Progress,
+    game: GameState?,
+    onResume: () -> Unit,
+    onDaily: () -> Unit,
+    onCourse: (String) -> Unit,
+    onSettings: () -> Unit,
+) {
+    val p = LocalPalette.current
+    val today = LocalDate.now().toString()
+    val day = progress.days[today]
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            BrandHeader("∴", "Therefore", "Deductive logic proofs, one line at a time") {
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings", tint = p.muted) }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (game != null && !game.done) {
+                    CardRow(onResume, bg = p.accentSoft, border = p.accent) {
+                        Column(Modifier.weight(1f)) {
+                            Eyebrow("Puzzle in progress")
+                            Text("${Curriculum.byId(game.courseId).title} · line ${game.lines.size + 1}", style = MaterialTheme.typography.titleSmall)
+                        }
+                        Text("Resume →", color = p.accent, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                CardRow(onDaily) {
+                    Column(Modifier.weight(1f)) {
+                        Eyebrow("Daily proof · $today")
+                        Text(
+                            when { day == null -> "A new proof is ready"; day.studied -> "Studied today"; else -> "Solved · grade ${day.grade}" },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text("${progress.streak} day streak", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    }
+                    Text(if (day == null) "Start →" else "View →", color = p.accent, fontWeight = FontWeight.SemiBold)
+                }
+                SectionTitle("Courses")
+                Text(
+                    "Each course adds new rules. Puzzles get longer as you solve more: the dots show your level.",
+                    style = MaterialTheme.typography.bodyMedium, color = p.muted,
+                )
+            }
+        }
+        itemsIndexed(Curriculum.courses) { i, c ->
+            CourseRow(i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
+        }
+    }
+}
+
+@Composable
+private fun CardRow(onClick: () -> Unit, bg: Color = LocalPalette.current.surface, border: Color = LocalPalette.current.line, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(CardShape).background(bg).border(1.dp, border, CardShape).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+@Composable
+private fun CourseRow(n: Int, c: Course, progress: Progress, modifier: Modifier, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val stats = progress.course(c.id)
+    Row(
+        modifier.fillMaxWidth().clip(CardShape).background(p.surface).border(1.dp, p.line, CardShape).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(34.dp).clip(CircleShape).border(1.5.dp, p.line, CircleShape), contentAlignment = Alignment.Center) {
+            Text("$n", fontFamily = Mono, fontWeight = FontWeight.SemiBold, color = p.muted)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(c.title, style = MaterialTheme.typography.titleMedium)
+            Text(c.blurb, style = MaterialTheme.typography.bodyMedium, color = p.muted)
+            FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
+                Tag(c.short)
+                Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
+                if (stats.solved > 0) Text("${stats.solved} solved", style = MaterialTheme.typography.bodySmall, color = p.muted)
+            }
+        }
+        GradeBadge(stats.best)
+    }
+}
+
+@Composable
+fun LessonScreen(courseId: String, progress: Progress, onBack: () -> Unit, onStart: () -> Unit) {
+    val p = LocalPalette.current
+    val c = Curriculum.byId(courseId)
+    val lesson = c.lesson ?: return
+    val stats = progress.course(courseId)
+    val n = Curriculum.courses.indexOf(c) + 1
+    val startLabel = if (stats.solved > 0) "Next puzzle" else "Start first puzzle"
+    Scaffold(
+        containerColor = p.bg,
+        topBar = {
+            TopAppBar(
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to courses") } },
+                title = { Text("Course $n") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = p.surface),
+            )
+        },
+    ) { pad ->
+        LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Eyebrow("${c.short} · Level ${stats.level} of 5" + if (stats.solved > 0) " · ${stats.solved} solved" else "")
+                    Text(c.title, style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            item { Button(onClick = onStart, Modifier.fillMaxWidth()) { Text(startLabel) } }
+            items(lesson.intro) { LogicText(it, style = MaterialTheme.typography.bodyLarge) }
+            if (lesson.rules.isNotEmpty()) {
+                item { SectionTitle("New rules") }
+                items(lesson.rules) { RuleCard(it) }
+            }
+            item { SectionTitle("Worked example") }
+            item {
+                Panel {
+                    Ledger(lesson.example.lines.map { (f, j) -> LedgerRow(f, j, premise = j == "Premise") }, lesson.example.conclusion)
+                }
+            }
+            item { TipBox("Tip", lesson.tip) }
+            item { SectionTitle("Rules you can use here") }
+            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { c.spec.rules.forEach { Tag(it.abbr) } } }
+            item { Button(onClick = onStart, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(startLabel) } }
+        }
+    }
+}
+
+@Composable
+fun DailyScreen(progress: Progress, inProgress: Boolean, onStart: () -> Unit) {
+    val p = LocalPalette.current
+    val today = LocalDate.now()
+    val result = progress.days[today.toString()]
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            BrandHeader("◷", "Daily Proof", "${today.dayOfWeek.getDisplayName(DateStyle.FULL, Locale.getDefault())}, ${today.month.getDisplayName(DateStyle.FULL, Locale.getDefault())} ${today.dayOfMonth}")
+        }
+        item {
+            Panel(Modifier.padding(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Eyebrow("Everyone gets the same proof today")
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("${progress.streak}", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = p.accent)
+                        Text(" day streak", Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.titleMedium)
+                        if (progress.bestStreak > progress.streak)
+                            Text("  · best ${progress.bestStreak}", Modifier.padding(bottom = 7.dp), color = p.muted)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        for (i in 6 downTo 0) {
+                            val d = today.minusDays(i.toLong())
+                            val r = progress.days[d.toString()]
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(d.dayOfWeek.getDisplayName(DateStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                                val solved = r != null && !r.studied
+                                Box(
+                                    Modifier.size(34.dp).clip(CircleShape)
+                                        .background(if (solved) p.accent else if (r != null) p.sunk else Color.Transparent)
+                                        .border(1.5.dp, if (i == 0) p.accent else if (r == null) p.line else Color.Transparent, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) { Text(r?.grade ?: "", fontWeight = FontWeight.Bold, color = if (solved) p.onAccent else p.muted) }
+                            }
+                        }
+                    }
+                    Text(
+                        when {
+                            result == null -> "A mixed puzzle that can use any of the 18 rules. Medium length."
+                            result.studied -> "You studied today's solution. A new proof arrives tomorrow."
+                            else -> "You solved today's proof with grade ${result.grade}. You can replay it, but your best grade is kept."
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Button(onClick = onStart, Modifier.fillMaxWidth()) {
+                        Text(if (inProgress) "Resume" else if (result != null) "Replay today's proof" else "Start today's proof")
+                    }
+                }
+            }
+        }
+    }
+}

@@ -17,8 +17,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run logic tests
+      - name: Web app logic tests
         run: node tests/engine.test.js
+
+      - name: Android tests (logic, database, and UI flows with screenshots)
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build debug APK
         working-directory: android
@@ -28,3 +32,9 @@ jobs:
         with:
           name: therefore-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: android/app/build/screenshots/

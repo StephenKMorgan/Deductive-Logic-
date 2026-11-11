@@ -41,11 +41,18 @@ To run it locally: `python3 -m http.server` in this folder, then open http://loc
 
 ## Android app
 
-`android/` is a Gradle project (Java, no extra libraries) that wraps the web app in a full-screen WebView. Each build copies the web files from the repo root into the APK, so there is only one copy of the app to maintain. It runs offline, keeps progress on the phone, and the system back gesture steps back through the app's screens.
+`android/` is a native Android app written in Kotlin with Jetpack Compose. It isn't a web wrapper: the logic engine, curriculum and screens are all native.
 
-**Get an APK without installing anything:** every push runs the **Android APK** workflow (`.github/workflows/android.yml`). Open the run under the repo's **Actions** tab and download **therefore-debug-apk** from *Artifacts*. Unzip it, copy `app-debug.apk` to your phone, and open it. Android will ask you to allow installs from that app (Files or Chrome) the first time.
+- **Engine** (`engine/`): formula parser, checker for all 18 rules, puzzle generator, hints and explanations. It's a port of `engine.js`, covered by the same tests.
+- **Storage** (`data/`): a Room database keeps every finished puzzle, and course levels, best grades and streaks are worked out from it. The puzzle in progress is saved after every change, so closing the app loses nothing. Settings are stored with DataStore.
+- **Phone features**: vibration on key presses, accepted lines, mistakes and solved proofs; an optional daily reminder notification (WorkManager) that is skipped if you've already solved today's proof; sharing your daily result through the Android share sheet; the back gesture; light and dark themes.
+- **Screens** (`ui/`): Learn (courses and lessons), the puzzle screen, graded results with an explained model proof, Daily, Rules and Settings (notation, theme, vibration, reminder, progress stats, reset).
 
-**Build it yourself:** open the `android/` folder in Android Studio and press Run, or run `cd android && ./gradlew assembleDebug` (needs JDK 17 and the Android SDK).
+**Get an APK without installing anything:** every push runs the **Android APK** workflow. It runs the tests, builds the app, and uploads **therefore-debug-apk** plus the test **screenshots**. Open the run under the repo's **Actions** tab and download them from *Artifacts*. Unzip the APK onto your phone and open it; the first time, Android asks you to allow installs from that app (Files or Chrome).
+
+**Build it yourself:** open the `android/` folder in Android Studio and press Run with your phone plugged in (USB debugging on), or run `cd android && ./gradlew assembleDebug` (needs JDK 17 and the Android SDK).
+
+**Tests:** `cd android && ./gradlew testDebugUnitTest`. These run the engine tests, a game-logic and database test, and Robolectric UI tests that tap through the real app (open a course, make a mistake, solve with hints, check the grade, use the rule menu, visit every tab, dark mode). The UI tests save screenshots to `android/app/build/screenshots/`.
 
 **Publishing to Google Play** needs a signed release bundle (`./gradlew bundleRelease`) and a signing key. Android Studio's *Build → Generate Signed Bundle* walks you through it.
 
@@ -58,7 +65,7 @@ To run it locally: `python3 -m http.server` in this folder, then open http://loc
 | `app.js` | The user interface |
 | `index.html` | Page and styles |
 | `sw.js`, `manifest.webmanifest`, `icon*` | Offline support and home-screen install |
-| `android/` | Android app (Gradle project) |
+| `android/` | Native Android app (Kotlin, Jetpack Compose, Room) |
 | `tests/engine.test.js` | `node tests/engine.test.js`: checks the rules and generates over 1,000 puzzles, verifying every model proof |
 
 ## How puzzles are generated
