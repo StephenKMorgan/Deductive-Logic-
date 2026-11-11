@@ -346,7 +346,7 @@
       return rs.length ? `<optgroup label="${label}">${rs.map((r) => `<option value="${r}"${current === r ? ' selected' : ''}>${r} · ${esc(ruleName(r))}</option>`).join('')}</optgroup>` : '';
     };
     return `<label class="picker${current ? ' on' : ''}"><span class="sr">Rule</span>
-      <select id="rule-select" data-act="pick">
+      <select id="rule-select">
         <option value=""${current ? '' : ' selected'}>Choose a rule…</option>
         ${group('inf', 'Rules of inference')}${group('rep', 'Replacement rules')}
       </select></label>`;
