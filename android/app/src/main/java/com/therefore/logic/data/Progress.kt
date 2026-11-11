@@ -2,6 +2,7 @@ package com.therefore.logic.data
 
 import com.therefore.logic.content.Curriculum
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -22,6 +23,7 @@ data class Progress(
     val bestStreak: Int = 0,
     val totalSolved: Int = 0,
     val perfect: Int = 0,
+    val lessonsDone: Set<String> = emptySet(),
 ) {
     fun course(id: String) = courses[id] ?: CourseStats()
 }
@@ -32,8 +34,10 @@ object Grades {
     fun better(a: String, b: String?): String = if (b == null || (rank[a] ?: 0) > (rank[b] ?: 0)) a else b
 }
 
-class ProgressRepository(private val dao: AttemptDao) {
-    val progress: Flow<Progress> = dao.all().map { compute(it, LocalDate.now()) }
+class ProgressRepository(private val dao: AttemptDao, private val lessons: LessonDao) {
+    val progress: Flow<Progress> = combine(dao.all(), lessons.done()) { attempts, done ->
+        compute(attempts, LocalDate.now()).copy(lessonsDone = done.toSet())
+    }
 
     suspend fun current(): Progress = progress.first()
 
@@ -50,7 +54,7 @@ class ProgressRepository(private val dao: AttemptDao) {
                         prev.studied -> DayResult(a.grade, a.stars)
                         else -> DayResult(Grades.better(a.grade, prev.grade), maxOf(a.stars, prev.stars))
                     }
-                } else if (!a.revealed) {
+                } else if (!a.revealed && a.mode == Mode.PRACTICE.name) {
                     val prev = courses[a.courseId] ?: CourseStats()
                     courses[a.courseId] = CourseStats(prev.solved + 1, Grades.better(a.grade, prev.best))
                 }

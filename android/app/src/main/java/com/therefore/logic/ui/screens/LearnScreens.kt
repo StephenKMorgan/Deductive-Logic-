@@ -126,6 +126,12 @@ fun HomeScreen(
             }
         }
         itemsIndexed(Curriculum.courses) { i, c ->
+            if (c.advanced && !Curriculum.courses[i - 1].advanced) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)) {
+                    SectionTitle("Advanced")
+                    Text("Proofs with assumptions: suppose something, see where it leads, then close the subproof.", style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                }
+            }
             CourseRow(i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
         }
     }
@@ -158,55 +164,12 @@ private fun CourseRow(n: Int, c: Course, progress: Progress, modifier: Modifier,
             FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
                 Tag(c.short)
                 Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
+                val done = c.lessons.count { it.id in progress.lessonsDone }
+                Text("$done/${c.lessons.size} lessons", style = MaterialTheme.typography.bodySmall, color = p.muted)
                 if (stats.solved > 0) Text("${stats.solved} solved", style = MaterialTheme.typography.bodySmall, color = p.muted)
             }
         }
         GradeBadge(stats.best)
-    }
-}
-
-@Composable
-fun LessonScreen(courseId: String, progress: Progress, onBack: () -> Unit, onStart: () -> Unit) {
-    val p = LocalPalette.current
-    val c = Curriculum.byId(courseId)
-    val lesson = c.lesson ?: return
-    val stats = progress.course(courseId)
-    val n = Curriculum.courses.indexOf(c) + 1
-    val startLabel = if (stats.solved > 0) "Next puzzle" else "Start first puzzle"
-    Scaffold(
-        containerColor = p.bg,
-        topBar = {
-            TopAppBar(
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to courses") } },
-                title = { Text("Course $n") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = p.surface),
-            )
-        },
-    ) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Eyebrow("${c.short} · Level ${stats.level} of 5" + if (stats.solved > 0) " · ${stats.solved} solved" else "")
-                    Text(c.title, style = MaterialTheme.typography.headlineMedium)
-                }
-            }
-            item { Button(onClick = onStart, Modifier.fillMaxWidth()) { Text(startLabel) } }
-            items(lesson.intro) { LogicText(it, style = MaterialTheme.typography.bodyLarge) }
-            if (lesson.rules.isNotEmpty()) {
-                item { SectionTitle("New rules") }
-                items(lesson.rules) { RuleCard(it) }
-            }
-            item { SectionTitle("Worked example") }
-            item {
-                Panel {
-                    Ledger(lesson.example.lines.map { (f, j) -> LedgerRow(f, j, premise = j == "Premise") }, lesson.example.conclusion)
-                }
-            }
-            item { TipBox("Tip", lesson.tip) }
-            item { SectionTitle("Rules you can use here") }
-            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { c.spec.rules.forEach { Tag(it.abbr) } } }
-            item { Button(onClick = onStart, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(startLabel) } }
-        }
     }
 }
 

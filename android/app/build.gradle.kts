@@ -14,11 +14,25 @@ android {
         applicationId = "com.therefore.logic"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "3.0"
+    }
+
+    signingConfigs {
+        // A fixed debug key checked into the repo, so every build (local or GitHub) is signed the same way
+        // and a new APK installs over the old one without losing progress. Not for Play Store releases.
+        getByName("debug") {
+            storeFile = file("therefore-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

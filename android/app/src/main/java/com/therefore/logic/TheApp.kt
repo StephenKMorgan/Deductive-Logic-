@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 class AppContainer(app: Application) {
     val db = AppDatabase.create(app)
     val settings = SettingsRepository(app)
-    val progress = ProgressRepository(db.attempts())
+    val progress = ProgressRepository(db.attempts(), db.lessons())
     val haptics = Haptics(app)
     val scope = CoroutineScope(SupervisorJob())
 }

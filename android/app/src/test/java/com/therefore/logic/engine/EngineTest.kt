@@ -1,6 +1,12 @@
 package com.therefore.logic.engine
 
 import com.therefore.logic.content.Curriculum
+import com.therefore.logic.content.LessonStep
+import com.therefore.logic.content.f
+import com.therefore.logic.content.puzzle
+import com.therefore.logic.data.FeedbackKind
+import com.therefore.logic.data.Mode
+import com.therefore.logic.game.Session
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -72,16 +78,16 @@ class EngineTest {
     }
 
     @Test fun lessonExamplesAreValidProofs() {
-        for (c in Curriculum.courses) {
-            val ex = c.lesson!!.example
+        val examples = Curriculum.courses.flatMap { it.lessons }.flatMap { it.steps }.filterIsInstance<LessonStep.Read>().mapNotNull { it.example }
+        for (ex in examples) {
             val ls = ArrayList<Formula>()
             ex.lines.forEachIndexed { i, (f, j) ->
                 val formula = p(f)
                 if (j != "Premise") {
                     val parts = j.split(",").map { it.trim() }
                     val rule = Rule.valueOf(parts.last())
-                    val r = Checker.check(rule, parts.dropLast(1).map { ls[it.toInt() - 1] }, formula)
-                    assertTrue("${c.id} line ${i + 1}: ${r.message}", r.ok)
+                    val r = if (rule.isStandard) Checker.check(rule, parts.dropLast(1).map { ls[it.toInt() - 1] }, formula).ok else true
+                    assertTrue("example line ${i + 1}: $f", r)
                 }
                 ls += formula
             }
@@ -92,7 +98,7 @@ class EngineTest {
     @Test fun generatorMakesValidPuzzlesForEveryCourseAndLevel() {
         var count = 0
         val t0 = System.currentTimeMillis()
-        for (c in Curriculum.courses + Curriculum.daily) for (level in 1..5) for (seed in 1..20) {
+        for (c in Curriculum.courses.filter { !it.advanced } + Curriculum.daily) for (level in 1..5) for (seed in 1..20) {
             val puzzle = Generator.generate(c.spec, level, seed * 7919L + level)
             count++
             assertTrue(satisfiable(puzzle.premises))
@@ -102,17 +108,84 @@ class EngineTest {
             val lines = Proofs.numbered(puzzle)
             val fs = ArrayList<Formula>()
             for (l in lines) {
-                if (l.rule != null) assertTrue("${c.id} model step", Checker.check(l.rule, l.cites.map { fs[it - 1] }, l.formula).ok)
+                if (l.rule != null) assertTrue("${c.id} model step", Checker.check(l.rule!!, l.cites.map { fs[it - 1] }, l.formula).ok)
                 fs += l.formula
             }
             assertEquals(puzzle.conclusion, fs.last())
-            // Hints lead all the way to the conclusion
-            val have = puzzle.premises.toMutableList()
-            var guard = 0
-            while (guard++ < 30) have += (Proofs.hint(puzzle, have) ?: break).step.formula
-            assertTrue(puzzle.conclusion in have)
+            assertTrue("${c.id} hints solve it", solveWithHints(puzzle))
         }
         println("$count puzzles in ${System.currentTimeMillis() - t0} ms")
+    }
+
+    /** Plays a puzzle by taking every hint to its last stage and filling it in. */
+    private fun solveWithHints(puzzle: Puzzle): Boolean {
+        var s = Session.newGame("test", 1, Mode.LESSON, puzzle, Rule.entries)
+        repeat(40) {
+            if (s.done) return true
+            repeat(3) { s = Session.hint(s).state }
+            if (s.feedback?.fill == null) return false
+            s = Session.fillHint(s).state
+            s = Session.addLine(s).state
+            if (s.feedback?.kind == FeedbackKind.BAD) return false
+        }
+        return s.done
+    }
+
+    @Test fun conditionalAndIndirectProofPuzzles() {
+        for (id in listOf("cp", "ip")) {
+            val course = Curriculum.byId(id)
+            for (level in 1..5) for (seed in 1..15) {
+                val puzzle = Generator.generate(course.spec, level, seed * 31L + level)
+                val opening = if (id == "cp") Rule.ACP else Rule.AIP
+                assertEquals("$id starts with an assumption", opening, puzzle.solution.first().rule)
+                // Replay the numbered model proof through the line checker.
+                val lines = ArrayList<ProofLine>()
+                for (n in Proofs.numbered(puzzle)) {
+                    if (n.rule != null) {
+                        val r = Proofs.checkLine(lines, n.rule!!, if (n.rule!!.isStandard) n.cites else emptyList(), n.formula)
+                        assertTrue("$id L$level model line ${n.formula} by ${n.rule}: ${r.message}", r.ok)
+                    }
+                    lines += n.line
+                }
+                assertEquals(puzzle.conclusion, lines.last().formula)
+                assertTrue(Proofs.scopes(lines).open.isEmpty())
+                assertTrue("$id L$level hints solve it", solveWithHints(puzzle))
+            }
+        }
+    }
+
+    @Test fun subproofLinesCantBeCitedAfterClosing() {
+        val lines = listOf(ProofLine(p("P -> Q"), null), ProofLine(p("P"), Rule.ACP), ProofLine(p("Q"), Rule.MP, listOf(1, 2)), ProofLine(p("P -> Q"), Rule.CP, listOf(2, 3)))
+        val r = Proofs.checkLine(lines, Rule.Add, listOf(3), p("Q v R"))
+        assertFalse(r.ok)
+        assertTrue(r.message.contains("closed"))
+        // CP must match the open assumption, IP needs a contradiction.
+        val open = lines.take(3)
+        assertFalse(Proofs.checkLine(open, Rule.CP, emptyList(), p("Q -> P")).ok)
+        assertTrue(Proofs.checkLine(open, Rule.CP, emptyList(), p("P -> Q")).ok)
+        assertFalse(Proofs.checkLine(open, Rule.IP, emptyList(), p("~P")).ok)
+    }
+
+    @Test fun everyLessonIsSolvableWithTheRulesItOffers() {
+        for (course in Curriculum.courses) for (lesson in course.lessons) for (step in lesson.steps) {
+            val (puzzle, rules) = when (step) {
+                is LessonStep.Guided -> step.puzzle() to step.rules
+                is LessonStep.Practice -> step.puzzle() to step.rules
+                is LessonStep.Quiz -> { assertTrue("${lesson.id} quiz answer", step.answer in step.options.indices); continue }
+                is LessonStep.Table -> { step.formulas.forEach { f(it) }; continue }
+                else -> continue
+            }
+            val lines = puzzle.premises.map { ProofLine(it, null) }.toMutableList()
+            for (n in Proofs.numbered(puzzle).drop(puzzle.premises.size)) {
+                assertTrue("${lesson.id}: ${n.rule} isn't offered on the board", n.rule in rules)
+                val r = Proofs.checkLine(lines, n.rule!!, if (n.rule!!.isStandard) n.cites else emptyList(), n.formula)
+                assertTrue("${lesson.id} '${step.title}': ${n.formula} by ${n.rule}: ${r.message}", r.ok)
+                lines += ProofLine(n.formula, n.rule, r.cites)
+            }
+            assertEquals("${lesson.id} reaches the conclusion", puzzle.conclusion, lines.last().formula)
+            assertTrue(Proofs.scopes(lines).open.isEmpty())
+            assertTrue("${lesson.id} hints work", solveWithHints(puzzle))
+        }
     }
 
     @Test fun dailyPuzzleIsTheSameForTheSameSeed() {
@@ -125,6 +198,6 @@ class EngineTest {
         val puzzle = Generator.generate(Curriculum.courses.last().spec, 4, 99L)
         val json = Json.encodeToString(puzzle)
         assertEquals(puzzle, Json.decodeFromString<Puzzle>(json))
-        assertNotNull(Proofs.hint(puzzle, puzzle.premises))
+        assertNotNull(Proofs.hint(puzzle, puzzle.premises.map { ProofLine(it, null) }))
     }
 }

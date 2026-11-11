@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
@@ -83,6 +84,8 @@ import com.therefore.logic.engine.Parser
 import com.therefore.logic.engine.Rule
 import com.therefore.logic.engine.RuleKind
 import com.therefore.logic.ui.GameViewModel
+import com.therefore.logic.game.BoardActions
+import com.therefore.logic.engine.Proofs
 import com.therefore.logic.ui.components.CardShape
 import com.therefore.logic.ui.components.Eyebrow
 import com.therefore.logic.ui.components.FormulaText
@@ -107,7 +110,13 @@ fun PlayScreen(vm: GameViewModel, state: GameState, onBack: () -> Unit) {
                 title = {
                     Column {
                         Text(course.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-                        Text(if (state.isDaily) state.date.orEmpty() else "Level ${state.level}", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        val sub = when (state.mode) {
+                            com.therefore.logic.data.Mode.DAILY -> state.date.orEmpty()
+                            com.therefore.logic.data.Mode.FREE -> "Free play · Level ${state.level}" +
+                                (state.lessonId?.let { id -> course.lessons.firstOrNull { it.id == id }?.let { " · ${it.title}" } } ?: "")
+                            else -> "Practice · Level ${state.level}"
+                        }
+                        Text(sub, style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 },
                 actions = {
@@ -136,12 +145,13 @@ fun PlayScreen(vm: GameViewModel, state: GameState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ProofList(vm: GameViewModel, s: GameState, modifier: Modifier) {
+fun ProofList(vm: BoardActions, s: GameState, modifier: Modifier, showGoal: Boolean = true) {
     val p = LocalPalette.current
     val list = rememberLazyListState()
+    val scopes = remember(s.lines) { Proofs.scopes(s.lines) }
     LaunchedEffect(s.lines.size) { list.animateScrollToItem(s.lines.size + 1) }
     LazyColumn(modifier, state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
-        item {
+        if (showGoal) item {
             Row(
                 Modifier.fillMaxWidth().clip(CardShape).background(p.surface).border(1.dp, p.line, CardShape).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -154,13 +164,20 @@ private fun ProofList(vm: GameViewModel, s: GameState, modifier: Modifier) {
         }
         itemsIndexed(s.lines, key = { i, _ -> i }) { i, line ->
             val n = i + 1
+            val depth = scopes.depth(n)
+            val usable = scopes.available(n)
             val selected = n in s.cites
             val bg by animateColorAsState(if (selected) p.accentSoft else Color.Transparent, label = "cite")
             if (i > 0) HorizontalDivider(color = if (i == s.premiseCount) p.ink.copy(alpha = 0.5f) else p.line, thickness = if (i == s.premiseCount) 1.5.dp else 0.5.dp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                // One bar per open assumption, like the indented subproofs in a textbook.
+                repeat(depth) {
+                    Box(Modifier.padding(start = 6.dp, end = 4.dp).width(2.dp).fillMaxHeight().background(p.accent.copy(alpha = 0.6f)))
+                }
                 Row(
                     Modifier
                         .weight(1f)
+                        .alpha(if (usable) 1f else 0.45f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(bg)
                         .then(if (selected) Modifier.border(1.5.dp, p.accent, RoundedCornerShape(8.dp)) else Modifier)
@@ -185,10 +202,12 @@ private fun ProofList(vm: GameViewModel, s: GameState, modifier: Modifier) {
         item {
             HorizontalDivider(color = p.line, thickness = 0.5.dp)
             val preview = Parser.parseOrNull(s.tokens.joinToString(""))?.show() ?: s.tokens.joinToString(" ")
-            Row(Modifier.alpha(0.6f).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            val ghostDepth = scopes.open.size + if (s.rule?.kind == RuleKind.ASSUMPTION) 1 else if (s.rule?.kind == RuleKind.CLOSE) -1 else 0
+            Row(Modifier.alpha(0.6f).padding(start = (6 + 12 * ghostDepth.coerceAtLeast(0)).dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${s.lines.size + 1}.", Modifier.width(28.dp), style = FormulaStyle, color = p.muted, textAlign = TextAlign.End)
                 FormulaText(preview.ifEmpty { "…" }, Modifier.weight(1f).padding(start = 8.dp))
-                val just = listOfNotNull(s.cites.sorted().joinToString(", ").ifEmpty { null }, s.rule?.abbr).joinToString(", ")
+                val just = if (s.rule != null && !s.rule.isStandard) s.rule.abbr
+                else listOfNotNull(s.cites.sorted().joinToString(", ").ifEmpty { null }, s.rule?.abbr).joinToString(", ")
                 Text(just, style = FormulaStyle.copy(fontSize = 13.sp), color = p.muted)
             }
         }
@@ -196,9 +215,9 @@ private fun ProofList(vm: GameViewModel, s: GameState, modifier: Modifier) {
 }
 
 @Composable
-private fun Composer(vm: GameViewModel, s: GameState) {
+fun Composer(vm: BoardActions, s: GameState) {
     val p = LocalPalette.current
-    val rules = Curriculum.byId(s.courseId).spec.rules
+    val rules = s.rules.ifEmpty { Curriculum.boardRules(Curriculum.byId(s.courseId).spec.rules) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -225,10 +244,12 @@ private fun Composer(vm: GameViewModel, s: GameState) {
 }
 
 @Composable
-private fun FeedbackBar(vm: GameViewModel, s: GameState) {
+private fun FeedbackBar(vm: BoardActions, s: GameState) {
     val p = LocalPalette.current
     val fb = s.feedback
-    val untouched = s.tokens.isEmpty() && s.cites.isEmpty() && s.rule == null && s.lines.size == s.premiseCount
+    // In lessons the coach gives the instructions, so the generic tip is left out.
+    val untouched = s.mode != com.therefore.logic.data.Mode.LESSON &&
+        s.tokens.isEmpty() && s.cites.isEmpty() && s.rule == null && s.lines.size == s.premiseCount
     val (text, kind) = when {
         fb != null -> fb.text to fb.kind
         untouched -> "Tap lines to cite them, choose a rule, then write the new line." to FeedbackKind.INFO
@@ -258,7 +279,7 @@ private fun FeedbackBar(vm: GameViewModel, s: GameState) {
 
 /** The new line. Tap a symbol to put the cursor on that side of it; tap empty space for the end. */
 @Composable
-private fun FormulaInput(vm: GameViewModel, s: GameState) {
+private fun FormulaInput(vm: BoardActions, s: GameState) {
     val p = LocalPalette.current
     val plain = LocalPlainText.current
     val blink = rememberInfiniteTransition(label = "caret")
@@ -321,10 +342,14 @@ private fun RulePicker(rules: List<Rule>, selected: Rule?, onSelect: (Rule?) -> 
             modifier = Modifier.menuAnchor().fillMaxWidth().semantics { contentDescription = "Rule picker" },
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for (kind in RuleKind.entries) {
-                val group = rules.filter { it.kind == kind }
+            for ((label, kinds) in listOf(
+                "Rules of inference" to setOf(RuleKind.INFERENCE),
+                "Replacement rules" to setOf(RuleKind.REPLACEMENT),
+                "Assumptions" to setOf(RuleKind.ASSUMPTION, RuleKind.CLOSE),
+            )) {
+                val group = rules.filter { it.kind in kinds }
                 if (group.isEmpty()) continue
-                Eyebrow(if (kind == RuleKind.INFERENCE) "Rules of inference" else "Replacement rules", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                Eyebrow(label, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 for (r in group) DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -346,22 +371,29 @@ private fun RuleHelp(s: GameState) {
     if (r == null) {
         Text("Citing: ${s.cites.sorted().joinToString(", ").ifEmpty { "none yet" }}", style = MaterialTheme.typography.bodySmall, color = p.muted)
     } else FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("${r.title} · cite ${if (r.lines == 1) "one line" else "two lines"}", style = MaterialTheme.typography.bodySmall, color = p.muted)
-        FormulaText("${r.from} ${if (r.kind == RuleKind.REPLACEMENT) "⟺" else "⟹"} ${r.to}", style = FormulaStyle.copy(fontSize = 13.sp))
+        Text(
+            when (r.kind) {
+                RuleKind.ASSUMPTION -> "${r.title} · write what you assume"
+                RuleKind.CLOSE -> "${r.title} · closes the latest assumption, no citing needed"
+                else -> "${r.title} · cite ${if (r.lines == 1) "one line" else "two lines"}"
+            },
+            style = MaterialTheme.typography.bodySmall, color = p.muted,
+        )
+        if (r.isStandard) FormulaText("${r.from} ${if (r.kind == RuleKind.REPLACEMENT) "⟺" else "⟹"} ${r.to}", style = FormulaStyle.copy(fontSize = 13.sp))
     }
 }
 
 private sealed interface KeySpec {
     data class Sym(val t: Char, val label: String) : KeySpec
-    data class Fn(val label: String, val desc: String, val action: (GameViewModel) -> Unit, val enabled: Boolean = true) : KeySpec
+    data class Fn(val label: String, val desc: String, val action: (BoardActions) -> Unit, val enabled: Boolean = true) : KeySpec
     data object AddLine : KeySpec
 }
 
 @Composable
-private fun Keypad(vm: GameViewModel, s: GameState) {
-    val course = Curriculum.byId(s.courseId)
+private fun Keypad(vm: BoardActions, s: GameState) {
     val used = (s.puzzle.premises + s.puzzle.conclusion).flatMap { it.atoms() }
-    val count = maxOf(course.spec.letters, used.maxOfOrNull { "PQRSTU".indexOf(it) + 1 } ?: 0)
+    val minLetters = if (s.mode == com.therefore.logic.data.Mode.LESSON) 4 else Curriculum.byId(s.courseId).spec.letters
+    val count = maxOf(minLetters, used.maxOfOrNull { "PQRSTU".indexOf(it) + 1 } ?: 0)
     val keys = buildList<KeySpec> {
         "PQRSTU".take(count).forEach { add(KeySpec.Sym(it, it.toString())) }
         listOf('¬' to "not", '∧' to "and", '∨' to "or", '→' to "if then", '↔' to "if and only if", '(' to "open bracket", ')' to "close bracket")
@@ -388,7 +420,7 @@ private fun Keypad(vm: GameViewModel, s: GameState) {
 }
 
 @Composable
-private fun Key(vm: GameViewModel, k: KeySpec, modifier: Modifier) {
+private fun Key(vm: BoardActions, k: KeySpec, modifier: Modifier) {
     val p = LocalPalette.current
     val plain = LocalPlainText.current
     val shape = RoundedCornerShape(10.dp)

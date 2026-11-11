@@ -33,14 +33,14 @@ class GameViewModelTest {
     @Test fun solvingRecordsAnAttempt() {
         val vm = GameViewModel(app)
         waitFor(read = { vm.loaded.value }) { it }
-        runBlocking { vm.start("ifthen") }
+        runBlocking { vm.start("ifthen", com.therefore.logic.data.Mode.PRACTICE) }
         idle()
         var s: GameState = vm.state.value!!
         // Solve by entering each model step exactly as a hint would.
         var guard = 0
         while (!s.done && guard++ < 20) {
-            val h = Proofs.hint(s.puzzle, s.lines.map { it.formula })!!
-            vm.clearInput()
+            val h = Proofs.hint(s.puzzle, s.lines)!!
+
             h.step.formula.show().filter { !it.isWhitespace() }.forEach(vm::key)
             vm.selectRule(h.step.rule)
             h.cites.forEach(vm::toggleCite)

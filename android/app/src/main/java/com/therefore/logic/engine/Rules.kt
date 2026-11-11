@@ -3,7 +3,8 @@ package com.therefore.logic.engine
 import com.therefore.logic.engine.Formula.Bin
 import com.therefore.logic.engine.Formula.Not
 
-enum class RuleKind { INFERENCE, REPLACEMENT }
+/** ASSUMPTION opens a subproof (ACP, AIP); CLOSE ends one (CP, IP). Neither is cited by tapping lines. */
+enum class RuleKind { INFERENCE, REPLACEMENT, ASSUMPTION, CLOSE }
 
 /** The 18 rules, with the Copi/Hurley conventions (Simp, DS and Add work on the left side). */
 enum class Rule(
@@ -31,7 +32,13 @@ enum class Rule(
     Impl("Material Implication", RuleKind.REPLACEMENT, 1, "P → Q", "¬P ∨ Q", "\"If P then Q\" means \"not P, or Q\"."),
     Equiv("Material Equivalence", RuleKind.REPLACEMENT, 1, "P ↔ Q", "(P → Q) ∧ (Q → P), or (P ∧ Q) ∨ (¬P ∧ ¬Q)", "\"P if and only if Q\" means each implies the other."),
     Exp("Exportation", RuleKind.REPLACEMENT, 1, "(P ∧ Q) → R", "P → (Q → R)", "\"If P and Q, then R\" means \"if P, then if Q then R\"."),
-    Taut("Tautology", RuleKind.REPLACEMENT, 1, "P", "P ∨ P (same for ∧)", "Saying the same thing twice adds nothing.");
+    Taut("Tautology", RuleKind.REPLACEMENT, 1, "P", "P ∨ P (same for ∧)", "Saying the same thing twice adds nothing."),
+    ACP("Assume for Conditional Proof", RuleKind.ASSUMPTION, 0, "anything", "an assumption P", "Suppose P, to see what follows from it."),
+    CP("Conditional Proof", RuleKind.CLOSE, 0, "assume P … derive Q", "P → Q", "If assuming P leads to Q, then P → Q."),
+    AIP("Assume for Indirect Proof", RuleKind.ASSUMPTION, 0, "anything", "an assumption ¬P", "Suppose the opposite of what you want to prove."),
+    IP("Indirect Proof", RuleKind.CLOSE, 0, "assume ¬P … derive Q ∧ ¬Q", "P", "If an assumption leads to a contradiction, it is false.");
+
+    val isStandard: Boolean get() = kind == RuleKind.INFERENCE || kind == RuleKind.REPLACEMENT
 
     val abbr: String get() = name
 }
@@ -211,10 +218,11 @@ object Checker {
     private fun raw(rule: Rule, cited: List<Formula>, result: Formula): Check =
         if (rule.kind == RuleKind.INFERENCE) inference(rule, cited, result) else replacement(rule, cited[0], result)
 
-    fun works(rule: Rule, cited: List<Formula>, result: Formula) = cited.size == rule.lines && raw(rule, cited, result).ok
+    fun works(rule: Rule, cited: List<Formula>, result: Formula) = rule.isStandard && cited.size == rule.lines && raw(rule, cited, result).ok
 
     /** Checks one proof line. On failure, names another rule that would justify it, if any. */
     fun check(rule: Rule, cited: List<Formula>, result: Formula): Check {
+        require(rule.isStandard) { "Assumption rules are checked by Proofs.checkLine" }
         if (cited.size != rule.lines) {
             val need = if (rule.lines == 1) "one line" else "two lines"
             return fail("${rule.title} uses $need, and you cited ${cited.size}. Tap lines in the proof to cite them.")

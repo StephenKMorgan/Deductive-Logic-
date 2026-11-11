@@ -7,6 +7,9 @@ import kotlin.random.Random
 
 enum class GoalShape { ATOM, NEG, AND, OR, IMP }
 
+/** How the model proof reaches the conclusion: directly, or through an assumption. */
+enum class Method { DIRECT, CONDITIONAL, INDIRECT }
+
 /** How a course generates puzzles. */
 data class Spec(
     val rules: List<Rule>,
@@ -21,6 +24,7 @@ data class Spec(
     val maxSize: Int,
     val stop: Double,
     val goals: Map<GoalShape, Double>,
+    val method: Method = Method.DIRECT,
 )
 
 @Serializable
@@ -41,6 +45,8 @@ object Generator {
         val inProgress = HashSet<Formula>()
         val premises = ArrayList<Formula>()
         val steps = ArrayList<Step>()
+        /** The open assumption, if the model proof is inside a subproof. */
+        var assumption: Formula? = null
     }
 
     private class Option(val rule: Rule, val subs: List<Formula>)
@@ -92,10 +98,19 @@ object Generator {
         val allow = ctx.spec.rules.toSet()
         val opts = ArrayList<Option>()
         val gb = g as? Bin
-        if (Rule.MP in allow) { val a = fresh(ctx); opts += Option(Rule.MP, listOf(imp(a, g), a)) }
+        if (Rule.MP in allow) {
+            // Inside a subproof, lean on the assumption so the subproof actually needs it.
+            val asm = ctx.assumption
+            val a = if (asm != null && asm != g && ctx.rng.nextDouble() < 0.5) asm else fresh(ctx)
+            opts += Option(Rule.MP, listOf(imp(a, g), a))
+        }
         if (Rule.MT in allow && g is Not) { val b = fresh(ctx); opts += Option(Rule.MT, listOf(imp(g.a, b), not(b))) }
         if (Rule.HS in allow && gb?.op == Op.IMP) { val b = fresh(ctx); opts += Option(Rule.HS, listOf(imp(gb.a, b), imp(b, gb.b))) }
-        if (Rule.DS in allow) { val a = freshAtom(ctx); opts += Option(Rule.DS, listOf(or(a, g), not(a))) }
+        if (Rule.DS in allow) {
+            val asm = ctx.assumption
+            val a = if (asm is Not && asm.a != g && ctx.rng.nextDouble() < 0.4) asm.a else freshAtom(ctx)
+            opts += Option(Rule.DS, listOf(or(a, g), not(a)))
+        }
         if (Rule.Simp in allow) { val b = fresh(ctx); opts += Option(Rule.Simp, listOf(and(g, b))) }
         if (Rule.Conj in allow && gb?.op == Op.AND) opts += Option(Rule.Conj, listOf(gb.a, gb.b))
         if (Rule.Add in allow && gb?.op == Op.OR) opts += Option(Rule.Add, listOf(gb.a))
@@ -159,7 +174,89 @@ object Generator {
         }
     }
 
-    private fun attempt(spec: Spec, rng: Random, level: Int): Puzzle? {
+    private fun depthFor(spec: Spec, level: Int): Int {
+        val span = spec.depth.last - spec.depth.first + 1
+        return maxOf(1, spec.depth.first + (span * (level - 1)) / 5)
+    }
+
+    /** Checks shared by every method: sizes, consistency, focus rules, and that every model step is valid. */
+    private fun acceptable(spec: Spec, ctx: Ctx, steps: List<Step>, conclusion: Formula, level: Int): Boolean {
+        val minSteps = spec.steps.first + (level - 1) / 2
+        val n = steps.size
+        if (n < minOf(minSteps, spec.steps.last) || n > spec.steps.last) return false
+        if (ctx.premises.size !in 2..6) return false
+        if (spec.focus.isNotEmpty() && steps.none { it.rule in spec.focus }) return false
+        if (!satisfiable(ctx.premises)) return false
+        if (ctx.premises.any { !satisfiable(listOf(not(it))) }) return false
+        if (conclusion in ctx.premises) return false
+        return true
+    }
+
+    /** Whether one standard rule gets from the premises straight to the conclusion. */
+    private fun oneStep(premises: List<Formula>, conclusion: Formula): Boolean {
+        val rules = Rule.entries.filter { it.isStandard }
+        for (p in premises) if (rules.any { Checker.works(it, listOf(p), conclusion) }) return true
+        for (p in premises) for (q in premises) if (p != q && rules.any { Checker.works(it, listOf(p, q), conclusion) }) return true
+        return false
+    }
+
+    private fun verify(puzzle: Puzzle): Boolean {
+        var lines = puzzle.premises.map { ProofLine(it, null) }
+        for (st in puzzle.solution) {
+            val sc = Proofs.scopes(lines)
+            val cites = if (st.rule.isStandard) st.from.map { f ->
+                (1..lines.size).lastOrNull { sc.available(it) && lines[it - 1].formula == f } ?: return false
+            } else emptyList()
+            val r = Proofs.checkLine(lines, st.rule, cites, st.formula)
+            if (!r.ok) return false
+            lines = lines + ProofLine(st.formula, st.rule, r.cites)
+        }
+        return lines.last().formula == puzzle.conclusion && Proofs.scopes(lines).open.isEmpty()
+    }
+
+    /** Prove A → X by assuming A and deriving X with its help. */
+    private fun attemptConditional(spec: Spec, rng: Random, level: Int): Puzzle? {
+        val ctx = Ctx(rng, spec)
+        val a = fresh(ctx)
+        var x = pickGoal(ctx)
+        if (x == a || x == not(a) || a == not(x)) x = freshAtom(ctx)
+        ctx.assumption = a
+        ctx.known += a
+        derive(ctx, x, depthFor(spec, level), true)
+        if (ctx.steps.none { a in it.from }) return null
+        val conclusion = imp(a, x)
+        val steps = listOf(Step(a, Rule.ACP, emptyList())) + ctx.steps + Step(conclusion, Rule.CP, emptyList())
+        if (!acceptable(spec, ctx, steps, conclusion, level) || oneStep(ctx.premises, conclusion)) return null
+        return Puzzle(ctx.premises.shuffled(rng), conclusion, steps).takeIf(::verify)
+    }
+
+    /** Prove G by assuming its opposite and deriving a contradiction X ∧ ¬X. */
+    private fun attemptIndirect(spec: Spec, rng: Random, level: Int): Puzzle? {
+        val ctx = Ctx(rng, spec)
+        val g = if (rng.nextBoolean()) freshAtom(ctx) else not(freshAtom(ctx))
+        val a = if (g is Not) g.a else not(g)
+        var x = freshAtom(ctx)
+        if (x == g || x == a || not(x) == a) x = freshAtom(ctx)
+        ctx.assumption = a
+        ctx.known += a
+        val d = maxOf(1, depthFor(spec, level) - 1)
+        derive(ctx, x, d, true)
+        derive(ctx, not(x), d, true)
+        if (ctx.steps.none { a in it.from }) return null
+        val contradiction = and(x, not(x))
+        val steps = listOf(Step(a, Rule.AIP, emptyList())) + ctx.steps +
+            Step(contradiction, Rule.Conj, listOf(x, not(x))) + Step(g, Rule.IP, emptyList())
+        if (!acceptable(spec, ctx, steps, g, level) || oneStep(ctx.premises, g)) return null
+        return Puzzle(ctx.premises.shuffled(rng), g, steps).takeIf(::verify)
+    }
+
+    private fun attempt(spec: Spec, rng: Random, level: Int): Puzzle? = when (spec.method) {
+        Method.CONDITIONAL -> attemptConditional(spec, rng, level)
+        Method.INDIRECT -> attemptIndirect(spec, rng, level)
+        Method.DIRECT -> attemptDirect(spec, rng, level)
+    }
+
+    private fun attemptDirect(spec: Spec, rng: Random, level: Int): Puzzle? {
         val ctx = Ctx(rng, spec)
         val goal = pickGoal(ctx)
         val span = spec.depth.last - spec.depth.first + 1
@@ -181,67 +278,5 @@ object Generator {
         repeat(3000) { i -> attempt(spec, rng, if (i < 400) level else 1)?.let { return it } }
         // Practically unreachable; fall back to a fresh seed rather than fail.
         return generate(spec, 1, seed + 7919)
-    }
-}
-
-data class Hint(val step: Step, val cites: List<Int>)
-
-data class NumberedLine(val formula: Formula, val rule: Rule?, val cites: List<Int>, val from: List<Formula> = emptyList())
-
-object Proofs {
-    /** The next model step whose inputs are already on the page. */
-    fun hint(puzzle: Puzzle, lines: List<Formula>): Hint? {
-        val at = HashMap<Formula, Int>()
-        lines.forEachIndexed { i, f -> at.putIfAbsent(f, i + 1) }
-        for (st in puzzle.solution) {
-            if (st.formula in at) continue
-            if (st.from.all { it in at }) return Hint(st, st.from.map { at.getValue(it) })
-        }
-        return null
-    }
-
-    /** The model proof with line numbers: premises first, then each step. */
-    fun numbered(puzzle: Puzzle): List<NumberedLine> {
-        val lines = puzzle.premises.map { NumberedLine(it, null, emptyList()) }.toMutableList()
-        val at = HashMap<Formula, Int>()
-        lines.forEachIndexed { i, l -> at[l.formula] = i + 1 }
-        for (st in puzzle.solution) {
-            lines += NumberedLine(st.formula, st.rule, st.from.map { at.getValue(it) }, st.from)
-            at[st.formula] = lines.size
-        }
-        return lines
-    }
-
-    /** One plain-English sentence explaining a model step. */
-    fun explain(line: NumberedLine): String {
-        val l = line.cites
-        val a = line.from.getOrNull(0)
-        val ab = a as? Bin
-        return when (line.rule) {
-            Rule.MP -> "Line ${l[0]} says \"if ${ab?.a}, then ${ab?.b}\", and line ${l[1]} gives exactly the \"if\" part. So the \"then\" part follows."
-            Rule.MT -> "Line ${l[0]} says \"if ${ab?.a}, then ${ab?.b}\". Line ${l[1]} says the \"then\" part is false, so the \"if\" part must be false too."
-            Rule.HS -> "Line ${l[0]} ends where line ${l[1]} begins (${ab?.b}), so the two conditionals chain into one."
-            Rule.DS -> "Line ${l[0]} says at least one of ${ab?.a} and ${ab?.b} is true. Line ${l[1]} rules out the left one, so the right one is true."
-            Rule.Simp -> "Line ${l[0]} is an \"and\", so its left side is true on its own."
-            Rule.Conj -> "Lines ${l[0]} and ${l[1]} are both true, so they can be joined with ∧."
-            Rule.Add -> "Line ${l[0]} is true, so \"$a or anything\" is true. Addition lets you attach whatever you need on the right."
-            Rule.CD -> "Line ${l[0]} gives two conditionals, and line ${l[1]} says one of their \"if\" parts holds. So one of the two results holds."
-            null -> "Premise."
-            else -> {
-                val how = when (line.rule) {
-                    Rule.DN -> "adds or removes a double negation"
-                    Rule.Com -> "swaps the two sides"
-                    Rule.Assoc -> "moves the brackets"
-                    Rule.DeM -> "moves the negation through the brackets and flips ∧ and ∨"
-                    Rule.Dist -> "distributes one part over the brackets"
-                    Rule.Trans -> "swaps the sides of the conditional and negates both"
-                    Rule.Impl -> "rewrites a conditional as an \"or\" (or back again)"
-                    Rule.Equiv -> "unpacks or repacks the biconditional"
-                    Rule.Exp -> "moves between (P ∧ Q) → R and P → (Q → R)"
-                    else -> "removes or adds a repeated part"
-                }
-                "${line.rule.title} $how, turning line ${l[0]} into this equivalent form."
-            }
-        }
     }
 }

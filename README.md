@@ -46,13 +46,16 @@ To run it locally: `python3 -m http.server` in this folder, then open http://loc
 - **Engine** (`engine/`): formula parser, checker for all 18 rules, puzzle generator, hints and explanations. It's a port of `engine.js`, covered by the same tests.
 - **Storage** (`data/`): a Room database keeps every finished puzzle, and course levels, best grades and streaks are worked out from it. The puzzle in progress is saved after every change, so closing the app loses nothing. Settings are stored with DataStore.
 - **Phone features**: vibration on key presses, accepted lines, mistakes and solved proofs; an optional daily reminder notification (WorkManager) that is skipped if you've already solved today's proof; sharing your daily result through the Android share sheet; the back gesture; light and dark themes.
-- **Screens** (`ui/`): Learn (courses and lessons), the puzzle screen, graded results with an explained model proof, Daily, Rules and Settings (notation, theme, vibration, reminder, progress stats, reset).
+- **Courses and lessons** (`content/`): 10 courses, the last two advanced (Conditional Proof and Indirect Proof, with indented subproofs). Each course page has **Practice**, which raises your level, and a list of hands-on **lessons**. A lesson is a sequence of steps: short reading, quick quizzes, truth-table explorers (flip P and Q, hunt for counterexamples), and coached proofs on the real board where each instruction moves on as you do it. The first lesson is a full tutorial of the controls. Every lesson also has **Free play**: generated puzzles focused on that lesson's rules, at any level you have reached.
+- **Screens** (`ui/`): Learn (courses), course pages, the lesson player, the puzzle screen, graded results with an explained model proof, Daily, Rules and Settings (notation, theme, vibration, reminder, progress stats, reset).
+
+**Updates keep your progress:** debug builds are signed with a fixed key (`android/app/therefore-debug.keystore`), so a newer APK installs over the old one. That key is only for sideloading; Google Play needs your own release key.
 
 **Get an APK without installing anything:** every push runs the **Android APK** workflow. It runs the tests, builds the app, and uploads **therefore-debug-apk** plus the test **screenshots**. Open the run under the repo's **Actions** tab and download them from *Artifacts*. Unzip the APK onto your phone and open it; the first time, Android asks you to allow installs from that app (Files or Chrome).
 
 **Build it yourself:** open the `android/` folder in Android Studio and press Run with your phone plugged in (USB debugging on), or run `cd android && ./gradlew assembleDebug` (needs JDK 17 and the Android SDK).
 
-**Tests:** `cd android && ./gradlew testDebugUnitTest`. These run the engine tests, a game-logic and database test, and Robolectric UI tests that tap through the real app (open a course, make a mistake, solve with hints, check the grade, use the rule menu, visit every tab, dark mode). The UI tests save screenshots to `android/app/build/screenshots/`.
+**Tests:** `cd android && ./gradlew testDebugUnitTest`. These run the engine tests (every generated puzzle and every lesson proof is replayed through the checker and solved using hints alone), a game-logic and database test, and Robolectric UI tests that tap through the real app: the full tutorial lesson, a Conditional Proof lesson, practice and free play, the rule menu, every tab, and dark mode. The UI tests save screenshots to `android/app/build/screenshots/`.
 
 **Publishing to Google Play** needs a signed release bundle (`./gradlew bundleRelease`) and a signing key. Android Studio's *Build → Generate Signed Bundle* walks you through it.
 

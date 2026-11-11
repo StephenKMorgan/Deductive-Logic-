@@ -61,9 +61,9 @@ class AppFlowTest {
         shot("1-home")
 
         tap("If–Then Basics")
-        waitFor("Worked example")
-        shot("2-lesson")
-        rule.onAllNodesWithText("Start first puzzle").onFirst().performClick()
+        waitFor("Lessons")
+        shot("2-course")
+        tap("Practice · Level 1")
         waitFor("Hint")
 
         // A deliberate mistake: cite line 1, pick MP, write "S ∧ S" (never a valid MP result here).
@@ -90,9 +90,9 @@ class AppFlowTest {
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Model proof, explained"))
         shot("6-result-model-proof")
 
-        // The level and grade show up on the course list.
+        // Back on the course page, the solve counts toward the next level.
         tapDesc("Done")
-        waitFor("Courses")
+        waitFor("Lessons")
         val db = (rule.activity.application as com.therefore.logic.TheApp).container.db
         // The attempt is saved on a background thread; give it a moment.
         for (t in 0 until 10) {
@@ -102,6 +102,7 @@ class AppFlowTest {
             Thread.sleep(300); rule.waitForIdle()
         }
         waitFor("1 solved", 10_000)
+        shot("6b-course-after")
     }
 
     private fun tapDesc(desc: String, substring: Boolean): SemanticsNodeInteraction =

@@ -137,7 +137,7 @@ fun RuleCard(rule: Rule, modifier: Modifier = Modifier) {
 }
 
 /** One row of a proof: number, formula, justification, and an optional explanation. */
-data class LedgerRow(val formula: String, val justification: String, val explanation: String? = null, val premise: Boolean = false)
+data class LedgerRow(val formula: String, val justification: String, val explanation: String? = null, val premise: Boolean = false, val depth: Int = 0)
 
 /** The textbook proof layout. The conclusion is shown after the last premise, like "Premise ∴ ¬Q". */
 @Composable
@@ -150,7 +150,11 @@ fun Ledger(rows: List<LedgerRow>, conclusion: String?, modifier: Modifier = Modi
             Column(Modifier.padding(vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text("${i + 1}.", Modifier.width(30.dp), style = FormulaStyle, color = p.muted, textAlign = TextAlign.End)
-                    FormulaText(r.formula, Modifier.weight(1f).padding(start = 8.dp))
+                    // Indented lines sit inside an assumption.
+                    Row(Modifier.padding(start = 8.dp)) {
+                        repeat(r.depth) { Text("│ ", style = FormulaStyle, color = p.accent) }
+                    }
+                    FormulaText(r.formula, Modifier.weight(1f))
                     Column(horizontalAlignment = Alignment.End) {
                         Text(r.justification, style = FormulaStyle.copy(fontSize = 13.sp), color = p.muted)
                         if (i == lastPremise && conclusion != null)

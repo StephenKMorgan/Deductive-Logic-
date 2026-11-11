@@ -31,7 +31,11 @@ import com.therefore.logic.data.ThemeMode
 import com.therefore.logic.reminder.Reminders
 import com.therefore.logic.ui.screens.DailyScreen
 import com.therefore.logic.ui.screens.HomeScreen
-import com.therefore.logic.ui.screens.LessonScreen
+import com.therefore.logic.ui.screens.CourseAction
+import com.therefore.logic.ui.screens.CourseScreen
+import com.therefore.logic.ui.screens.LessonPlayerScreen
+import com.therefore.logic.data.Mode
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.therefore.logic.ui.screens.PlayScreen
 import com.therefore.logic.ui.screens.ResultScreen
 import com.therefore.logic.ui.screens.RulesScreen
@@ -47,9 +51,11 @@ private object Routes {
     const val DAILY = "daily"
     const val RULES = "rules"
     const val SETTINGS = "settings"
+    const val COURSE = "course/{id}"
     const val LESSON = "lesson/{id}"
     const val PLAY = "play"
     const val RESULT = "result"
+    fun course(id: String) = "course/$id"
     fun lesson(id: String) = "lesson/$id"
 }
 
@@ -70,11 +76,12 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
 
     LaunchedEffect(openDaily) { if (openDaily) nav.navigate(Routes.DAILY) { launchSingleTop = true } }
 
-    /** Resumes the course's puzzle in progress, or generates a new one. */
-    fun play(courseId: String, fresh: Boolean = false) = scope.launch {
-        if (fresh || !vm.hasGameFor(courseId)) vm.start(courseId)
+    /** Resumes a matching puzzle in progress, or generates a new one, then opens the board. */
+    fun play(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null, fresh: Boolean = false) = scope.launch {
+        if (fresh || !vm.hasGame(courseId, mode, lessonId, level)) vm.start(courseId, mode, level, lessonId)
         withContext(Dispatchers.Main.immediate) {
-            nav.navigate(Routes.PLAY) { popUpTo(Routes.HOME); launchSingleTop = true }
+            val back = if (courseId == Curriculum.DAILY_ID) Routes.DAILY else Routes.course(courseId)
+            nav.navigate(Routes.PLAY) { popUpTo(back); launchSingleTop = true }
         }
     }
 
@@ -102,17 +109,40 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                     progress, game,
                     onResume = { nav.navigate(if (game?.done == true) Routes.RESULT else Routes.PLAY) },
                     onDaily = { nav.navigate(Routes.DAILY) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true } },
-                    onCourse = { nav.navigate(Routes.lesson(it)) },
+                    onCourse = { nav.navigate(Routes.course(it)) },
                     onSettings = { nav.navigate(Routes.SETTINGS) },
                 )
             }
             composable(Routes.DAILY) {
-                DailyScreen(progress, vm.hasGameFor(Curriculum.DAILY_ID)) { play(Curriculum.DAILY_ID) }
+                DailyScreen(progress, vm.hasGame(Curriculum.DAILY_ID, Mode.DAILY)) { play(Curriculum.DAILY_ID, Mode.DAILY) }
             }
             composable(Routes.RULES) { RulesScreen() }
+            composable(Routes.COURSE) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                CourseScreen(
+                    id, progress,
+                    resumeLabel = if (vm.hasGame(id, Mode.PRACTICE)) "Resume practice puzzle" else null,
+                    onBack = { nav.popBackStack() },
+                ) { action ->
+                    when (action) {
+                        CourseAction.Practice -> play(id, Mode.PRACTICE)
+                        is CourseAction.Lesson -> nav.navigate(Routes.lesson(action.lessonId))
+                        is CourseAction.FreePlay -> play(id, Mode.FREE, action.level, action.lessonId, fresh = true)
+                    }
+                }
+            }
             composable(Routes.LESSON) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
-                LessonScreen(id, progress, onBack = { nav.popBackStack() }, onStart = { play(id) })
+                val lessonVm: LessonViewModel = viewModel()
+                LaunchedEffect(id) { lessonVm.open(id) }
+                if (lessonVm.state.collectAsStateWithLifecycle().value?.lessonId != id) return@composable
+                val courseId = Curriculum.lesson(id).first.id
+                LessonPlayerScreen(
+                    lessonVm, progress,
+                    onClose = { nav.popBackStack() },
+                    onNextLesson = { next -> nav.navigate(Routes.lesson(next)) { popUpTo(Routes.course(courseId)) } },
+                    onFreePlay = { level -> play(courseId, Mode.FREE, level, id, fresh = true) },
+                )
             }
             composable(Routes.PLAY) {
                 val s = game
@@ -123,12 +153,15 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
             composable(Routes.RESULT) {
                 val s = game
                 if (s?.result == null) { LaunchedEffect(Unit) { nav.popBackStack() }; return@composable }
-                val back = { nav.navigate(if (s.isDaily) Routes.DAILY else Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }
+                val back = {
+                    if (s.isDaily) nav.navigate(Routes.DAILY) { popUpTo(Routes.HOME); launchSingleTop = true }
+                    else nav.navigate(Routes.course(s.courseId)) { popUpTo(Routes.HOME); launchSingleTop = true }
+                }
                 ResultScreen(
                     s,
                     onBack = { back() },
-                    onNext = { play(s.courseId, fresh = true) },
-                    onLesson = { nav.navigate(Routes.lesson(s.courseId)) { popUpTo(Routes.HOME) } },
+                    onNext = { play(s.courseId, s.mode, if (s.mode == Mode.FREE) s.level else null, s.lessonId, fresh = true) },
+                    onLesson = { back() },
                 )
             }
             composable(Routes.SETTINGS) {

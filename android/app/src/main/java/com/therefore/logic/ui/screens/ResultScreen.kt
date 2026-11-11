@@ -167,14 +167,15 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
             item {
                 Panel {
                     Ledger(
-                        model.map { LedgerRow(it.formula.show(), if (it.rule == null) "Premise" else "${it.cites.joinToString(", ")}, ${it.rule.abbr}", if (it.rule == null) null else Proofs.explain(it), it.rule == null) },
+                        model.map { LedgerRow(it.formula.show(), it.line.justification, if (it.rule == null) null else Proofs.explain(it), it.rule == null, it.depth) },
                         state.puzzle.conclusion.show(),
                     )
                 }
             }
             if (!revealed) item {
                 Expandable("Your proof") {
-                    Ledger(state.lines.map { LedgerRow(it.formula.show(), it.justification, premise = it.rule == null) }, state.puzzle.conclusion.show())
+                    val sc = Proofs.scopes(state.lines)
+                    Ledger(state.lines.mapIndexed { i, l -> LedgerRow(l.formula.show(), l.justification, premise = l.rule == null, depth = sc.depth(i + 1)) }, state.puzzle.conclusion.show())
                 }
             }
             item { SectionTitle("Rules in this puzzle") }
@@ -190,8 +191,10 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
                         }, Modifier.fillMaxWidth()) { Text("Share result") }
                         OutlinedButton(onClick = onBack, Modifier.fillMaxWidth()) { Text("Done") }
                     } else {
-                        Button(onClick = onNext, Modifier.fillMaxWidth()) { Text("Next puzzle") }
-                        OutlinedButton(onClick = onLesson, Modifier.fillMaxWidth()) { Text("Review the lesson") }
+                        Button(onClick = onNext, Modifier.fillMaxWidth()) {
+                            Text(if (state.mode == com.therefore.logic.data.Mode.FREE) "Another level ${state.level} puzzle" else "Next practice puzzle")
+                        }
+                        OutlinedButton(onClick = onLesson, Modifier.fillMaxWidth()) { Text("Back to the course") }
                     }
                 }
             }
