@@ -144,15 +144,19 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                     onFreePlay = { level -> play(courseId, Mode.FREE, level, id, fresh = true) },
                 )
             }
-            composable(Routes.PLAY) {
+            // These screens redirect when their game is missing or finished, but only while they are the
+            // screen on top. A screen that is animating away (e.g. results, after "Next puzzle" has
+            // started a new game) must not act, or it would pop the new screen off the stack.
+            composable(Routes.PLAY) { entry ->
                 val s = game
-                if (s == null) { LaunchedEffect(Unit) { nav.popBackStack() }; return@composable }
-                LaunchedEffect(s.done) { if (s.done) nav.navigate(Routes.RESULT) { popUpTo(Routes.PLAY) { inclusive = true } } }
+                val onTop = { nav.currentBackStackEntry?.id == entry.id }
+                if (s == null) { LaunchedEffect(Unit) { if (onTop()) nav.popBackStack() }; return@composable }
+                LaunchedEffect(s.done) { if (s.done && onTop()) nav.navigate(Routes.RESULT) { popUpTo(Routes.PLAY) { inclusive = true } } }
                 if (!s.done) PlayScreen(vm, s, onBack = { nav.popBackStack() })
             }
-            composable(Routes.RESULT) {
+            composable(Routes.RESULT) { entry ->
                 val s = game
-                if (s?.result == null) { LaunchedEffect(Unit) { nav.popBackStack() }; return@composable }
+                if (s?.result == null) { LaunchedEffect(Unit) { if (nav.currentBackStackEntry?.id == entry.id) nav.popBackStack() }; return@composable }
                 val back = {
                     if (s.isDaily) nav.navigate(Routes.DAILY) { popUpTo(Routes.HOME); launchSingleTop = true }
                     else nav.navigate(Routes.course(s.courseId)) { popUpTo(Routes.HOME); launchSingleTop = true }

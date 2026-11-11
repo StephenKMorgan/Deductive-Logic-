@@ -105,6 +105,25 @@ class AppFlowTest {
         shot("6b-course-after")
     }
 
+    /** "Next practice puzzle" on the results screen must open the new puzzle, not the course page. */
+    @Test fun nextPuzzleOpensTheBoard() {
+        waitFor("Courses")
+        tap("If–Then Basics")
+        waitFor("Lessons")
+        tap("Practice · Level 1")
+        waitFor("Hint")
+        tap("Solution")
+        tap("Show solution")
+        waitFor("Solution shown")
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Next practice puzzle"))
+        tap("Next practice puzzle")
+        // Let navigation and any leftover screen effects settle, then check where we are.
+        repeat(10) { Thread.sleep(100); rule.waitForIdle() }
+        shot("next-puzzle")
+        assertTrue("the new puzzle is open", rule.onAllNodesWithText("Write line", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue("not sent back to the course page", rule.onAllNodesWithText("Lessons").fetchSemanticsNodes().isEmpty())
+    }
+
     private fun tapDesc(desc: String, substring: Boolean): SemanticsNodeInteraction =
         rule.onNode(hasContentDescription(desc, substring = substring)).performClick()
 }
