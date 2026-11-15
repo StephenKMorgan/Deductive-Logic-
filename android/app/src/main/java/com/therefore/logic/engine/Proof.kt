@@ -110,7 +110,7 @@ object Proofs {
     }
 
     /** Checks a new line against the proof so far. On success, `cites` holds the citations to record. */
-    fun checkLine(lines: List<ProofLine>, rule: Rule, cites: List<Int>, formula: Formula): LineCheck {
+    fun checkLine(lines: List<ProofLine>, rule: Rule, cites: List<Int>, formula: Formula, conclusion: Formula? = null): LineCheck {
         val sc = scopes(lines)
         return when (rule.kind) {
             RuleKind.ASSUMPTION -> LineCheck(true)
@@ -147,9 +147,44 @@ object Proofs {
                 for (c in cites) if (!sc.available(c))
                     return LineCheck(false, "Line $c is inside an assumption that has already been closed, so it can't be cited any more.")
                 val r = Checker.check(rule, cites.map { lines[it - 1].formula }, formula)
+                if (r.ok) quantifierRestriction(lines, sc, rule, cites, formula, conclusion)?.let { return it }
                 LineCheck(r.ok, r.message, r.trap, r.alt, cites)
             }
         }
+    }
+
+    /**
+     * The restrictions that make EI and UG safe:
+     * EI must introduce a name that appears nowhere earlier in the proof or in the conclusion;
+     * UG can't generalize a variable that is free in an open assumption.
+     */
+    private fun quantifierRestriction(lines: List<ProofLine>, sc: Scopes, rule: Rule, cites: List<Int>, formula: Formula, conclusion: Formula?): LineCheck? {
+        when (rule) {
+            Rule.EI -> {
+                val src = lines[cites[0] - 1].formula as Formula.Quant
+                val name = formula.names().firstOrNull { src.body.subst(src.v, it) == formula } ?: return null
+                val usedAt = lines.indexOfFirst { name in it.formula.names() }
+                if (usedAt >= 0) return LineCheck(
+                    false,
+                    "EI needs a brand-new name, but $name already appears on line ${usedAt + 1}. You only know that something is ${src.body.show(false).replace(src.v.toString(), "_")}; it might not be $name. Use a letter that hasn't appeared yet.",
+                    Trap.EI_NOT_NEW, cites = cites,
+                )
+                if (conclusion != null && name in conclusion.names()) return LineCheck(
+                    false, "EI can't use $name, because $name appears in the conclusion. Pick a name that appears nowhere else.", Trap.EI_NOT_NEW, cites = cites,
+                )
+            }
+            Rule.UG -> {
+                val u = formula as Formula.Quant
+                val src = lines[cites[0] - 1].formula
+                val variable = (src.terms() + u.v).filter(::isVariable).firstOrNull { u.body.subst(u.v, it) == src } ?: return null
+                val assumption = sc.open.firstOrNull { variable in lines[it - 1].formula.freeVariables() }
+                if (assumption != null) return LineCheck(
+                    false, "You can't use UG on $variable here: line $assumption assumed something about $variable, so $variable isn't arbitrary inside this subproof.", Trap.UG_NAME, cites = cites,
+                )
+            }
+            else -> {}
+        }
+        return null
     }
 
     /** The next step of the model proof that the player can take from where they are. */

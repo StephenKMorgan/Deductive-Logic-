@@ -31,6 +31,7 @@ import com.therefore.logic.data.ThemeMode
 import com.therefore.logic.reminder.Reminders
 import com.therefore.logic.ui.screens.DailyScreen
 import com.therefore.logic.ui.screens.HomeScreen
+import com.therefore.logic.ui.screens.PredicateScreen
 import com.therefore.logic.ui.screens.CourseAction
 import com.therefore.logic.ui.screens.CourseScreen
 import com.therefore.logic.ui.screens.LessonPlayerScreen
@@ -50,6 +51,7 @@ private object Routes {
     const val HOME = "home"
     const val DAILY = "daily"
     const val RULES = "rules"
+    const val PREDICATE = "predicate"
     const val SETTINGS = "settings"
     const val COURSE = "course/{id}"
     const val LESSON = "lesson/{id}"
@@ -59,7 +61,9 @@ private object Routes {
     fun lesson(id: String) = "lesson/$id"
 }
 
-private val TABS = listOf(Triple(Routes.HOME, "Learn", "∴"), Triple(Routes.DAILY, "Daily", "◷"), Triple(Routes.RULES, "Rules", "§"))
+private val TABS = listOf(
+    Triple(Routes.HOME, "Learn", "∴"), Triple(Routes.PREDICATE, "Predicate", "∀"), Triple(Routes.DAILY, "Daily", "◷"), Triple(Routes.RULES, "Rules", "§"),
+)
 
 @Composable
 fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
@@ -117,6 +121,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                 DailyScreen(progress, vm.hasGame(Curriculum.DAILY_ID, Mode.DAILY)) { play(Curriculum.DAILY_ID, Mode.DAILY) }
             }
             composable(Routes.RULES) { RulesScreen() }
+            composable(Routes.PREDICATE) { PredicateScreen(progress) { nav.navigate(Routes.course(it)) } }
             composable(Routes.COURSE) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 CourseScreen(

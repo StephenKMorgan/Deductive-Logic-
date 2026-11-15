@@ -30,7 +30,7 @@ data class Progress(
 
 object Grades {
     const val REVEALED = "–"
-    /** Daily proof only: no mistakes, no hints, at or under par. */
+    /** Daily proof only: no mistakes, no hints, and fewer lines than par. */
     const val S = "S"
     private val rank = mapOf(S to 5, "A" to 4, "B" to 3, "C" to 2, "D" to 1)
     fun better(a: String, b: String?): String = if (b == null || (rank[a] ?: 0) > (rank[b] ?: 0)) a else b

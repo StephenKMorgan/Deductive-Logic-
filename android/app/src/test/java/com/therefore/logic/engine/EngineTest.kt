@@ -167,18 +167,19 @@ class EngineTest {
     }
 
     @Test fun everyLessonIsSolvableWithTheRulesItOffers() {
-        for (course in Curriculum.courses) for (lesson in course.lessons) for (step in lesson.steps) {
+        for (course in Curriculum.allCourses) for (lesson in course.lessons) for (step in lesson.steps) {
             val (puzzle, rules) = when (step) {
                 is LessonStep.Guided -> step.puzzle() to step.rules
                 is LessonStep.Practice -> step.puzzle() to step.rules
                 is LessonStep.Quiz -> { assertTrue("${lesson.id} quiz answer", step.answer in step.options.indices); continue }
                 is LessonStep.Table -> { step.formulas.forEach { f(it) }; continue }
+                is LessonStep.WorldStep -> { step.formulas.forEach { f(it) }; continue }
                 else -> continue
             }
             val lines = puzzle.premises.map { ProofLine(it, null) }.toMutableList()
             for (n in Proofs.numbered(puzzle).drop(puzzle.premises.size)) {
                 assertTrue("${lesson.id}: ${n.rule} isn't offered on the board", n.rule in rules)
-                val r = Proofs.checkLine(lines, n.rule!!, if (n.rule!!.isStandard) n.cites else emptyList(), n.formula)
+                val r = Proofs.checkLine(lines, n.rule!!, if (n.rule!!.isStandard) n.cites else emptyList(), n.formula, puzzle.conclusion)
                 assertTrue("${lesson.id} '${step.title}': ${n.formula} by ${n.rule}: ${r.message}", r.ok)
                 lines += ProofLine(n.formula, n.rule, r.cites)
             }
@@ -219,7 +220,7 @@ class EngineTest {
         assertTrue(Proofs.contradictions(closed).isEmpty())
     }
 
-    @Test fun sRankNeedsAPerfectDailyAtOrUnderPar() {
+    @Test fun sRankNeedsAPerfectDailyUnderPar() {
         val puzzle = Generator.generate(Curriculum.daily.spec, 3, 5L)
         fun solve(mode: Mode, hintsFirst: Boolean): String {
             var s = Session.newGame("daily", 3, mode, puzzle, Rule.entries)
@@ -231,9 +232,86 @@ class EngineTest {
             assertTrue(s.done)
             return s.result!!.grade
         }
-        assertEquals("S", solve(Mode.DAILY, hintsFirst = false))
+        // Matching par exactly is an A; S needs fewer lines than the model proof.
+        assertEquals("A", solve(Mode.DAILY, hintsFirst = false))
         assertEquals("A", solve(Mode.PRACTICE, hintsFirst = false))   // S is for the daily proof only
         assertTrue(solve(Mode.DAILY, hintsFirst = true) != "S")
+        // Beating par: a model proof with a wasted line, solved without it.
+        val padded = puzzle.copy(solution = puzzle.solution + puzzle.solution.last())
+        var s = Session.newGame("daily", 3, Mode.DAILY, padded, Rule.entries)
+        for (st in Proofs.numbered(puzzle).drop(puzzle.premises.size)) {
+            s = s.copy(tokens = st.formula.show().filter { !it.isWhitespace() }.toList(), caret = 0, rule = st.rule, cites = if (st.rule!!.isStandard) st.cites else emptyList())
+            s = Session.addLine(s).state
+        }
+        assertEquals("S", s.result!!.grade)
+    }
+
+    @Test fun predicateFormulasParseAndPrint() {
+        assertEquals("∀x(Fx → Gx)", p("∀x(Fx → Gx)").show())
+        assertEquals(p("∀x(Fx->Gx)"), p("∀x (Fx → Gx)"))
+        assertEquals("∃x ¬Fx", p("∃x~Fx").show())
+        assertEquals("Ms", p("Ms").show())
+        assertTrue(Parser.parse("∀a Fa") is ParseResult.Error)   // quantifiers bind variables, not names
+        assertEquals(p("Fa ∧ Gb"), p("Fx ∧ Gb").subst('x', 'a'))
+        assertEquals(setOf('x'), p("Fx ∧ ∀y Gy").freeVariables())
+    }
+
+    @Test fun quantifierRulesAndTheirRestrictions() {
+        fun ok(rule: Rule, from: String, to: String) = Checker.check(rule, listOf(p(from)), p(to)).ok
+        assertTrue(ok(Rule.UI, "∀x(Fx -> Gx)", "Fa -> Ga"))
+        assertTrue(ok(Rule.UI, "∀x(Fx -> Gx)", "Fx -> Gx"))
+        assertFalse(ok(Rule.UI, "∀x(Fx -> Gx)", "Fa -> Gb"))
+        assertTrue(ok(Rule.EG, "Fa & Gb", "∃x(Fx & Gb)"))
+        assertTrue(ok(Rule.EI, "∃x Fx", "Fa"))
+        assertFalse(ok(Rule.EI, "∃x Fx", "Fx"))
+        assertTrue(ok(Rule.UG, "Fx -> Hx", "∀x(Fx -> Hx)"))
+        assertEquals(Trap.UG_NAME, Checker.check(Rule.UG, listOf(p("Fa")), p("∀x Fx")).trap)
+        assertTrue(ok(Rule.QN, "~∀x Fx", "∃x ~Fx"))
+        assertTrue(ok(Rule.QN, "~∃x(Fx & ~Gx)", "∀x ~(Fx & ~Gx)"))
+        assertTrue(ok(Rule.Impl, "∀x(Fx -> Gx)", "∀x(~Fx v Gx)"))   // replacement rules work inside quantifiers
+
+        // EI needs a brand-new name.
+        val lines = listOf(ProofLine(p("Ga"), null), ProofLine(p("∃x Fx"), null))
+        val reused = Proofs.checkLine(lines, Rule.EI, listOf(2), p("Fa"))
+        assertFalse(reused.ok); assertEquals(Trap.EI_NOT_NEW, reused.trap)
+        assertTrue(Proofs.checkLine(lines, Rule.EI, listOf(2), p("Fb")).ok)
+        assertFalse(Proofs.checkLine(lines, Rule.EI, listOf(2), p("Fb"), conclusion = p("Hb")).ok)
+        // UG can't generalize a variable that an open assumption is about.
+        val inside = listOf(ProofLine(p("Fx"), Rule.ACP))
+        assertFalse(Proofs.checkLine(inside, Rule.UG, listOf(1), p("∀x Fx")).ok)
+    }
+
+    @Test fun predicatePuzzlesForEveryCourseAndLevel() {
+        for (c in Curriculum.predicateCourses) for (level in 1..5) for (seed in 1..15) {
+            val puzzle = Generator.generate(c.spec, level, seed * 131L + level)
+            assertTrue("${c.id} uses quantifiers", (puzzle.premises + puzzle.conclusion).any { it.isPredicateLogic })
+            val lines = ArrayList<ProofLine>()
+            for (n in Proofs.numbered(puzzle)) {
+                if (n.rule != null) {
+                    assertTrue("${c.id}: ${n.rule} is on the board", n.rule in c.spec.rules)
+                    val r = Proofs.checkLine(lines, n.rule!!, n.cites, n.formula, puzzle.conclusion)
+                    assertTrue("${c.id} L$level ${n.formula} by ${n.rule}: ${r.message}", r.ok)
+                }
+                lines += n.line
+            }
+            assertEquals(puzzle.conclusion, lines.last().formula)
+            assertTrue("${c.id} L$level hints solve it", solveWithHints(puzzle))
+        }
+        // Each course actually needs its own rules.
+        val used = Curriculum.predicateCourses.associate { c -> c.id to (1..20).flatMap { Generator.generate(c.spec, 3, it.toLong()).solution.map { s -> s.rule } }.toSet() }
+        assertTrue(Rule.UI in used.getValue("pred-quant"))
+        assertTrue(Rule.UG in used.getValue("pred-allsome") && Rule.EI in used.getValue("pred-allsome") && Rule.EG in used.getValue("pred-allsome"))
+        assertTrue(Rule.QN in used.getValue("pred-qn"))
+    }
+
+    @Test fun worldsEvaluateQuantifiers() {
+        val w = World(3, mapOf('F' to setOf(0, 1), 'G' to setOf(0)), mapOf('a' to 0, 'b' to 1, 'c' to 2))
+        assertFalse(p("∀x Fx").eval(w))
+        assertTrue(p("∃x Fx").eval(w))
+        assertFalse(p("∀x(Fx -> Gx)").eval(w))    // b is F but not G
+        assertTrue(p("Fa & Ga").eval(w))
+        assertTrue(satisfiable(listOf(p("∃x Fx"), p("∃x ~Fx"))))
+        assertFalse(satisfiable(listOf(p("∀x Fx"), p("∃x ~Fx"))))
     }
 
     @Test fun dailyPuzzleIsTheSameForTheSameSeed() {

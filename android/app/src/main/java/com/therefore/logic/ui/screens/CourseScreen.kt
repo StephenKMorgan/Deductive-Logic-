@@ -71,7 +71,8 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
     val p = LocalPalette.current
     val c = Curriculum.byId(courseId)
     val stats = progress.course(courseId)
-    val n = Curriculum.courses.indexOf(c) + 1
+    val track = if (c.track == com.therefore.logic.content.Track.PREDICATE) Curriculum.predicateCourses else Curriculum.courses
+    val n = track.indexOf(c) + 1
     // Free play dialog: which lesson (null = whole course).
     var freePlayFor by rememberSaveable { mutableStateOf<String?>(null) }
     var freePlayOpen by rememberSaveable { mutableStateOf(false) }
@@ -81,7 +82,15 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
         topBar = {
             TopAppBar(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to courses") } },
-                title = { Text(if (c.advanced) "Advanced course $n" else "Course $n") },
+                title = {
+                    Text(
+                        when {
+                            c.track == com.therefore.logic.content.Track.PREDICATE -> "Predicate course $n"
+                            c.advanced -> "Advanced course $n"
+                            else -> "Course $n"
+                        },
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = p.surface),
             )
         },

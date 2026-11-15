@@ -36,15 +36,23 @@ enum class Rule(
     ACP("Assume for Conditional Proof", RuleKind.ASSUMPTION, 0, "anything", "an assumption P", "Suppose P, to see what follows from it."),
     CP("Conditional Proof", RuleKind.CLOSE, 0, "assume P … derive Q", "P → Q", "If assuming P leads to Q, then P → Q."),
     AIP("Assume for Indirect Proof", RuleKind.ASSUMPTION, 0, "anything", "an assumption ¬P", "Suppose the opposite of what you want to prove."),
-    IP("Indirect Proof", RuleKind.CLOSE, 0, "assume ¬P … derive Q ∧ ¬Q", "P", "If an assumption leads to a contradiction, it is false.");
+    IP("Indirect Proof", RuleKind.CLOSE, 0, "assume ¬P … derive Q ∧ ¬Q", "P", "If an assumption leads to a contradiction, it is false."),
+    UI("Universal Instantiation", RuleKind.INFERENCE, 1, "∀x Fx", "Fa (or Fx)", "If everything is F, then any particular thing is F."),
+    EG("Existential Generalization", RuleKind.INFERENCE, 1, "Fa", "∃x Fx", "If this thing is F, then something is F."),
+    EI("Existential Instantiation", RuleKind.INFERENCE, 1, "∃x Fx", "Fa (a new name)", "Something is F, so give it a name, but one that hasn't been used yet."),
+    UG("Universal Generalization", RuleKind.INFERENCE, 1, "Fx", "∀x Fx", "What you showed for an arbitrary x holds for everything. Never from a name like a."),
+    QN("Quantifier Negation", RuleKind.REPLACEMENT, 1, "¬∀x Fx / ¬∃x Fx", "∃x ¬Fx / ∀x ¬Fx", "\"Not everything is F\" means \"something isn't F\", and the other way round.");
 
     val isStandard: Boolean get() = kind == RuleKind.INFERENCE || kind == RuleKind.REPLACEMENT
+
+    /** The predicate-logic rules, grouped on their own in menus. */
+    val isQuantifierRule: Boolean get() = this == UI || this == EG || this == EI || this == UG || this == QN
 
     val abbr: String get() = name
 }
 
 /** Why a line was rejected, so the results screen can teach the matching lesson. */
-enum class Trap { AFFIRM, DENY, DS_RIGHT, SIMP_RIGHT, ADD_RIGHT, DN, ALT, OTHER }
+enum class Trap { AFFIRM, DENY, DS_RIGHT, SIMP_RIGHT, ADD_RIGHT, DN, ALT, OTHER, UG_NAME, EI_NOT_NEW, WHOLE_LINE }
 
 data class Check(val ok: Boolean, val message: String = "", val trap: Trap? = null, val alt: Rule? = null)
 
@@ -108,6 +116,17 @@ object Checker {
                 if (l != null && l.op == Op.AND) out += imp(l.a, imp(l.b, bin.b))
                 if (r != null && r.op == Op.IMP) out += imp(and(bin.a, r.a), r.b)
             }
+            Rule.QN -> {
+                val qf = f as? Formula.Quant
+                val nq = (f as? Not)?.a as? Formula.Quant
+                fun flip(q: Quantifier) = if (q == Quantifier.ALL) Quantifier.SOME else Quantifier.ALL
+                // ¬∀x B ⟺ ∃x ¬B and ¬∃x B ⟺ ∀x ¬B (both directions)
+                if (nq != null) out += Formula.Quant(flip(nq.q), nq.v, not(nq.body))
+                if (qf != null && qf.body is Not) out += not(Formula.Quant(flip(qf.q), qf.v, qf.body.a))
+                // ∀x B ⟺ ¬∃x ¬B and ∃x B ⟺ ¬∀x ¬B
+                if (qf != null) out += not(Formula.Quant(flip(qf.q), qf.v, not(qf.body)))
+                if (nq != null && nq.body is Not) out += Formula.Quant(flip(nq.q), nq.v, nq.body.a)
+            }
             Rule.Taut -> {
                 out += or(f, f); out += and(f, f)
                 if (bin != null && (bin.op == Op.OR || bin.op == Op.AND) && bin.a == bin.b) out += bin.a
@@ -123,13 +142,23 @@ object Checker {
         if (rootRewrites(rule, a).any { it == b }) return true
         return when {
             a is Not && b is Not -> rewritesTo(rule, a.a, b.a)
+            a is Formula.Quant && b is Formula.Quant && a.q == b.q && a.v == b.v -> rewritesTo(rule, a.body, b.body)
             a is Bin && b is Bin && a.op == b.op -> rewritesTo(rule, a.a, b.a) && rewritesTo(rule, a.b, b.b)
             else -> false
         }
     }
 
     private fun inference(rule: Rule, c: List<Formula>, r: Formula): Check {
-        val perms = if (c.size == 2) listOf(c[0] to c[1], c[1] to c[0]) else listOf(c[0] to c[0])
+        // Two cited lines can fit a rule in both orders (P → Q and Q → P chain either way), so the
+        // line is accepted if either order gives it; only then fall through to explain the mistake.
+        if (c.size == 1) return inferenceOrdered(rule, c[0], c[0], r, single = true)
+        if (rule != Rule.Conj && inferenceOrdered(rule, c[1], c[0], r).ok) return OK
+        return inferenceOrdered(rule, c[0], c[1], r)
+    }
+
+    private fun inferenceOrdered(rule: Rule, first: Formula, second: Formula, r: Formula, single: Boolean = false): Check {
+        val c = if (single) listOf(first) else listOf(first, second)
+        val perms = if (single) listOf(first to first) else listOf(first to second, second to first)
         fun imps() = perms.mapNotNull { (x, y) -> (x as? Bin)?.takeIf { it.op == Op.IMP }?.let { it to y } }
         fun ors() = perms.mapNotNull { (x, y) -> (x as? Bin)?.takeIf { it.op == Op.OR }?.let { it to y } }
         when (rule) {
@@ -204,6 +233,39 @@ object Checker {
                     }
                 }
                 return fail("Constructive Dilemma needs (P → Q) ∧ (R → S) and P ∨ R, with the \"or\" line matching the two \"if\" parts in order.")
+            }
+            Rule.UI -> {
+                val x = c[0] as? Formula.Quant
+                if (x == null || x.q != Quantifier.ALL) return fail("Universal Instantiation works on a line that starts with ∀ as a whole, like ∀x(Fx → Gx).", Trap.WHOLE_LINE)
+                val terms = r.terms() + x.v
+                if (terms.any { x.body.subst(x.v, it) == r }) return OK
+                return fail("Universal Instantiation drops the ∀x and puts one name or variable everywhere x was: for example ${x.body.subst(x.v, 'a')}.")
+            }
+            Rule.EG -> {
+                val x = c[0]
+                val e = r as? Formula.Quant
+                if (e == null || e.q != Quantifier.SOME) return fail("Existential Generalization writes a line that starts with ∃, like ∃x Fx.")
+                if ((x.terms() + e.v).any { e.body.subst(e.v, it) == x }) return OK
+                return fail("For Existential Generalization, putting a name back in place of ${e.v} in ${r} must give exactly ${x}.")
+            }
+            Rule.EI -> {
+                val x = c[0] as? Formula.Quant
+                if (x == null || x.q != Quantifier.SOME) return fail("Existential Instantiation works on a line that starts with ∃ as a whole, like ∃x Fx.", Trap.WHOLE_LINE)
+                val names = r.names()
+                if (names.any { x.body.subst(x.v, it) == r }) return OK
+                if (r.terms().filter(::isVariable).any { x.body.subst(x.v, it) == r })
+                    return fail("Existential Instantiation must use a name (a constant like a or b), not a variable: you only know that some particular thing is ${x.body.show(false)}, not an arbitrary one.", Trap.EI_NOT_NEW)
+                return fail("Existential Instantiation drops the ∃x and puts a new name everywhere x was: for example ${x.body.subst(x.v, 'a')}.")
+            }
+            Rule.UG -> {
+                val x = c[0]
+                val u = r as? Formula.Quant
+                if (u == null || u.q != Quantifier.ALL) return fail("Universal Generalization writes a line that starts with ∀, like ∀x Fx.")
+                val vars = (x.terms() + u.v).filter(::isVariable)
+                if (vars.any { u.body.subst(u.v, it) == x }) return OK
+                if (x.names().any { u.body.subst(u.v, it) == x })
+                    return fail("You can't generalize from a name. ${x} is about one particular thing, and what's true of one thing needn't be true of everything. UG needs a line about an arbitrary x.", Trap.UG_NAME)
+                return fail("For Universal Generalization, putting the variable back in place of ${u.v} in ${r} must give exactly ${x}.")
             }
             else -> return fail("Unknown rule.")
         }

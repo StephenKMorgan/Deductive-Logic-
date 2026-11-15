@@ -173,6 +173,27 @@ private fun CourseRow(n: Int, c: Course, progress: Progress, modifier: Modifier,
     }
 }
 
+/** The Predicate tab: courses on ∀, ∃ and the four quantifier rules. */
+@Composable
+fun PredicateScreen(progress: Progress, onCourse: (String) -> Unit) {
+    val p = LocalPalette.current
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item { BrandHeader("∀", "Predicate Logic", "All, some, and the things in between") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Propositional logic treats each statement as a single letter. Predicate logic looks inside: it can say that everything, or something, has a property. That's what you need for arguments like \"all humans are mortal; Socrates is human; so Socrates is mortal\".",
+                    style = MaterialTheme.typography.bodyMedium, color = p.muted,
+                )
+                SectionTitle("Courses")
+            }
+        }
+        itemsIndexed(Curriculum.predicateCourses) { i, c ->
+            CourseRow(i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
+        }
+    }
+}
+
 @Composable
 fun DailyScreen(progress: Progress, inProgress: Boolean, onStart: () -> Unit) {
     val p = LocalPalette.current
@@ -210,10 +231,10 @@ fun DailyScreen(progress: Progress, inProgress: Boolean, onStart: () -> Unit) {
                     }
                     Text(
                         when {
-                            result == null -> "A mixed puzzle that can use any of the 18 rules. Solve it with no mistakes, no hints and no more lines than par for an S rank."
+                            result == null -> "A mixed puzzle that can use any of the 18 rules. Beat par (fewer lines than the model proof) with no mistakes or hints for a rare S rank."
                             result.studied -> "You studied today's solution. A new proof arrives tomorrow."
                             result.grade == "S" -> "S rank today: a perfect proof. Come back tomorrow for a new one."
-                            else -> "You solved today's proof with grade ${result.grade}. Replay it for an S rank: no mistakes, no hints, and no more lines than par. Your best grade is kept."
+                            else -> "You solved today's proof with grade ${result.grade}. Replay it for an S rank: no mistakes, no hints, and fewer lines than par. Your best grade is kept."
                         },
                         style = MaterialTheme.typography.bodyLarge,
                     )

@@ -103,11 +103,11 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
             )
             if (state.mistakes.isEmpty()) add("Every line you submitted was correct.")
             if (state.isDaily && r.grade != Grades.S) add(
-                "S rank needs no mistakes, no hints, and ${r.modelLines} lines or fewer (par). " +
+                "S rank needs no mistakes, no hints, and fewer than ${r.modelLines} lines: beating par. " +
                     listOfNotNull(
                         "you made ${state.mistakes.size} mistake${if (state.mistakes.size > 1) "s" else ""}".takeIf { state.mistakes.isNotEmpty() },
                         "you used hints".takeIf { state.hints > 0 },
-                        "you used ${r.yourLines} lines".takeIf { r.yourLines > r.modelLines },
+                        "you used ${r.yourLines} lines".takeIf { r.yourLines >= r.modelLines },
                     ).joinToString(", ").replaceFirstChar { it.uppercase() } + ".",
             )
             if (state.hints > 0) add("You used ${state.hints} hint${if (state.hints > 1) "s" else ""}. Next time, try working backward from the conclusion before asking.")

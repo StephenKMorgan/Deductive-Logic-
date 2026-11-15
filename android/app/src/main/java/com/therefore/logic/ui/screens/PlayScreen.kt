@@ -351,12 +351,13 @@ private fun RulePicker(rules: List<Rule>, selected: Rule?, onSelect: (Rule?) -> 
             modifier = Modifier.menuAnchor().fillMaxWidth().semantics { contentDescription = "Rule picker" },
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for ((label, kinds) in listOf(
-                "Rules of inference" to setOf(RuleKind.INFERENCE),
-                "Replacement rules" to setOf(RuleKind.REPLACEMENT),
-                "Assumptions" to setOf(RuleKind.ASSUMPTION, RuleKind.CLOSE),
+            for ((label, inGroup) in listOf<Pair<String, (Rule) -> Boolean>>(
+                "Quantifier rules" to { it.isQuantifierRule },
+                "Rules of inference" to { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule },
+                "Replacement rules" to { it.kind == RuleKind.REPLACEMENT && !it.isQuantifierRule },
+                "Assumptions" to { it.kind == RuleKind.ASSUMPTION || it.kind == RuleKind.CLOSE },
             )) {
-                val group = rules.filter { it.kind in kinds }
+                val group = rules.filter(inGroup)
                 if (group.isEmpty()) continue
                 Eyebrow(label, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 for (r in group) DropdownMenuItem(
@@ -403,8 +404,19 @@ private fun Keypad(vm: BoardActions, s: GameState) {
     val used = (s.puzzle.premises + s.puzzle.conclusion).flatMap { it.atoms() }
     val minLetters = if (s.mode == com.therefore.logic.data.Mode.LESSON) 4 else Curriculum.byId(s.courseId).spec.letters
     val count = maxOf(minLetters, used.maxOfOrNull { "PQRSTU".indexOf(it) + 1 } ?: 0)
+    val predicateLogic = (s.puzzle.premises + s.puzzle.conclusion).any { it.isPredicateLogic }
     val keys = buildList<KeySpec> {
-        "PQRSTU".take(count).forEach { add(KeySpec.Sym(it, it.toString())) }
+        if (predicateLogic) {
+            // Predicate letters, then the variable x, the names in use plus the next new one (for EI), then ∀ ∃.
+            val all = s.puzzle.premises + s.puzzle.conclusion + s.lines.map { it.formula }
+            all.flatMap { it.predicates() }.distinct().sorted().forEach { add(KeySpec.Sym(it, "predicate $it")) }
+            add(KeySpec.Sym('x', "variable x"))
+            val names = all.flatMap { it.names() }.toSortedSet()
+            val next = ('a'..'w').first { it != 'v' && it !in names }
+            (names + next).take(3).forEach { add(KeySpec.Sym(it, "name $it")) }
+            add(KeySpec.Sym('∀', "for all"))
+            add(KeySpec.Sym('∃', "there exists"))
+        } else "PQRSTU".take(count).forEach { add(KeySpec.Sym(it, it.toString())) }
         listOf('¬' to "not", '∧' to "and", '∨' to "or", '→' to "if then", '↔' to "if and only if", '(' to "open bracket", ')' to "close bracket")
             .forEach { (t, d) -> add(KeySpec.Sym(t, d)) }
         add(KeySpec.Fn("◀", "Move cursor left", { it.moveCaret(-1) }))
@@ -438,7 +450,7 @@ private fun Key(vm: BoardActions, k: KeySpec, modifier: Modifier) {
         is KeySpec.Fn -> Quad(k.label, k.desc, k.enabled, false)
         KeySpec.AddLine -> Quad("Add line", "Add line", true, true)
     }
-    val isOp = k is KeySpec.Sym && k.t in "¬∧∨→↔"
+    val isOp = k is KeySpec.Sym && k.t in "¬∧∨→↔∀∃"
     Box(
         modifier
             .height(48.dp)

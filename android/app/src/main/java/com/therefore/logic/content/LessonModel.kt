@@ -17,6 +17,17 @@ enum class TableGoal {
     ALL_ROWS,
 }
 
+enum class WorldGoal {
+    /** Make every formula true. */
+    ALL_TRUE,
+    /** Make the (single) formula false. */
+    FALSE,
+    /** Every formula but the last true, the last false. */
+    COUNTEREXAMPLE,
+    /** Try every possible world (used to show two formulas always agree). */
+    EVERY_WORLD,
+}
+
 /** A coaching instruction in a guided proof. The step is done once `done` is true for the board. */
 class Coach(val text: String, val done: (GameState) -> Boolean)
 
@@ -34,6 +45,20 @@ sealed interface LessonStep {
         val formulas: List<String>,
         val goal: TableGoal,
         /** For COUNTEREXAMPLE / ALL_ROWS-on-an-argument: the last formula is the conclusion. */
+        val argument: Boolean = false,
+        val success: String,
+    ) : LessonStep
+
+    /**
+     * A world explorer for predicate logic: three things (a, b, c) and properties to switch on and off,
+     * with quantified statements evaluated live.
+     */
+    data class WorldStep(
+        override val title: String,
+        val prompt: String,
+        val formulas: List<String>,
+        val goal: WorldGoal,
+        /** Label the formulas as premises and a conclusion. */
         val argument: Boolean = false,
         val success: String,
     ) : LessonStep

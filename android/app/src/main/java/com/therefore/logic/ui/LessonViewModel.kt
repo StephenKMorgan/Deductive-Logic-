@@ -8,6 +8,8 @@ import com.therefore.logic.content.Curriculum
 import com.therefore.logic.content.LessonDef
 import com.therefore.logic.content.LessonStep
 import com.therefore.logic.content.TableGoal
+import com.therefore.logic.content.WorldGoal
+import com.therefore.logic.engine.World
 import com.therefore.logic.content.f
 import com.therefore.logic.content.puzzle
 import com.therefore.logic.data.GameState
@@ -31,6 +33,9 @@ data class StepState(
     val values: Map<Char, Boolean> = emptyMap(),
     val visited: Set<Int> = emptySet(),
     val found: Boolean = false,
+    /** World explorer: which things (0, 1, 2) have each property, and the worlds tried so far. */
+    val props: Map<Char, Set<Int>> = emptyMap(),
+    val worldsSeen: Set<String> = emptySet(),
     /** Guided / practice proofs. */
     val board: GameState? = null,
     val coachIndex: Int = 0,
@@ -67,6 +72,11 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             val values = letters.associateWith { true }
             StepState(values = values, visited = setOf(mask(values))).let { evaluateTable(step, it) }
         }
+        is LessonStep.WorldStep -> {
+            val preds = step.formulas.flatMap { f(it).predicates() }.distinct().sorted()
+            val props = preds.associateWith { emptySet<Int>() }
+            evaluateWorld(step, StepState(props = props, worldsSeen = setOf(worldKey(props))))
+        }
         is LessonStep.Guided -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
         is LessonStep.Practice -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
     }
@@ -83,6 +93,35 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         }
         val found = st.found || hit
         return st.copy(found = found, complete = found)
+    }
+
+    private fun worldKey(props: Map<Char, Set<Int>>) = props.toSortedMap().entries.joinToString("|") { (k, v) -> "$k${v.sorted()}" }
+
+    fun world(props: Map<Char, Set<Int>>) = World(3, props, mapOf('a' to 0, 'b' to 1, 'c' to 2))
+
+    private fun evaluateWorld(step: LessonStep.WorldStep, st: StepState): StepState {
+        val w = world(st.props)
+        val v = step.formulas.map { f(it).eval(w) }
+        val worlds = 1 shl (3 * st.props.size)
+        val hit = when (step.goal) {
+            WorldGoal.ALL_TRUE -> v.all { it }
+            WorldGoal.FALSE -> !v[0]
+            WorldGoal.COUNTEREXAMPLE -> v.dropLast(1).all { it } && !v.last()
+            WorldGoal.EVERY_WORLD -> st.worldsSeen.size >= minOf(worlds, 6)
+        }
+        return st.copy(found = st.found || hit, complete = st.found || hit)
+    }
+
+    /** Gives or takes property [p] from thing [thing] in a world explorer. */
+    fun toggleProperty(p: Char, thing: Int) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.WorldStep ?: return
+        val cur = s.step.props[p] ?: emptySet()
+        val props = s.step.props + (p to if (thing in cur) cur - thing else cur + thing)
+        c.haptics.key()
+        val st = evaluateWorld(step, s.step.copy(props = props, worldsSeen = s.step.worldsSeen + worldKey(props)))
+        if (st.found && !s.step.found) c.haptics.solved()
+        _state.value = s.copy(step = st)
     }
 
     fun toggle(letter: Char) {

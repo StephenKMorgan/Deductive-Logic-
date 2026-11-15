@@ -100,7 +100,7 @@ object Session {
             if (dup != null) return bad(s, "That formula is already line ${dup + 1}. Try a different step.")
         }
         val cites = if (rule.isStandard) s.cites.sorted() else emptyList()
-        val res = Proofs.checkLine(s.lines, rule, cites, formula)
+        val res = Proofs.checkLine(s.lines, rule, cites, formula, s.puzzle.conclusion)
         if (!res.ok) {
             val trap = res.trap ?: if (res.alt != null) Trap.ALT else Trap.OTHER
             return Outcome(
@@ -187,8 +187,8 @@ object Session {
         val result = if (s.revealed) GameResult(Grades.REVEALED, 0, 0, model, yours, seconds) else {
             val raw = 100 - 8 * s.mistakes.size - s.hintPenalty - 4 * maxOf(0, yours - model)
             val score = raw.coerceIn(50, 100)
-            // S rank (daily proof only): no mistakes, no hints, and no more lines than the model proof.
-            val perfect = s.mode == Mode.DAILY && s.mistakes.isEmpty() && s.hints == 0 && yours <= model
+            // S rank (daily proof only): no mistakes, no hints, and fewer lines than the model proof (beating par).
+            val perfect = s.mode == Mode.DAILY && s.mistakes.isEmpty() && s.hints == 0 && yours < model
             val grade = when { perfect -> Grades.S; score >= 90 -> "A"; score >= 80 -> "B"; score >= 70 -> "C"; else -> "D" }
             GameResult(grade, when (grade) { Grades.S, "A" -> 3; "B" -> 2; else -> 1 }, score, model, yours, seconds)
         }

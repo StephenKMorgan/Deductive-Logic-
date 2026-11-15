@@ -100,11 +100,23 @@ fun RulesScreen() {
         }
         item { SectionTitle("Rules of inference") }
         item { Text("These apply to whole lines only: from the lines on the left, you may write the line on the right.", style = MaterialTheme.typography.bodyMedium) }
-        items(Rule.entries.filter { it.kind == RuleKind.INFERENCE }) { RuleCard(it) }
+        items(Rule.entries.filter { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule }) { RuleCard(it) }
         item { TipBox("Not valid", "From P → Q and Q, concluding P (affirming the consequent). From P → Q and ¬P, concluding ¬Q (denying the antecedent).", warn = true) }
         item { SectionTitle("Replacement rules") }
         item { Text("Each side means the same thing, so you can swap one for the other in either direction, even inside part of a line.", style = MaterialTheme.typography.bodyMedium) }
-        items(Rule.entries.filter { it.kind == RuleKind.REPLACEMENT }) { RuleCard(it) }
+        items(Rule.entries.filter { it.kind == RuleKind.REPLACEMENT && !it.isQuantifierRule }) { RuleCard(it) }
+        item { SectionTitle("Assumptions") }
+        item { Text("Open a subproof with an assumption, then close it. Indented lines can't be cited after the subproof closes.", style = MaterialTheme.typography.bodyMedium) }
+        items(listOf(Rule.ACP, Rule.CP, Rule.AIP, Rule.IP)) { RuleCard(it) }
+        item { SectionTitle("Predicate logic") }
+        item {
+            Text(
+                "Fx: x has property F. a, b, c name particular things; x, y, z are variables. ∀x: for every x. ∃x: for at least one x. " +
+                    "EI must use a name that hasn't appeared yet, and UG can only generalize a variable, never a name.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        items(Rule.entries.filter { it.isQuantifierRule }) { RuleCard(it) }
         item { SectionTitle("How to write a proof") }
         item { Text("Number every line. The premises come first. Each new line names the rule you used and the line numbers it came from. You're done when the conclusion appears on its own line.", style = MaterialTheme.typography.bodyMedium) }
         item {
@@ -227,7 +239,7 @@ fun SettingsScreen(
                         StatRow("Without mistakes or hints", "${progress.perfect}")
                         StatRow("Daily streak", "${progress.streak} (best ${progress.bestStreak})")
                         HorizontalDivider(color = p.line)
-                        Curriculum.courses.forEach { c ->
+                        Curriculum.allCourses.forEach { c ->
                             val s = progress.course(c.id)
                             StatRow(c.title, "${s.solved} solved · level ${s.level}" + (s.best?.let { " · best $it" } ?: ""))
                         }

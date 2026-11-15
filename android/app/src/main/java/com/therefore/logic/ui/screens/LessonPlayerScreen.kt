@@ -123,6 +123,7 @@ fun LessonPlayerScreen(
                 is LessonStep.Read -> ReadStep(step)
                 is LessonStep.Quiz -> QuizStep(vm, step, s.step)
                 is LessonStep.Table -> TableStep(vm, step, s.step)
+                is LessonStep.WorldStep -> WorldExplorer(vm, step, s.step)
                 is LessonStep.Guided -> BoardStep(vm, s.step, s.stepIndex == total - 1, coachFor(step, s.step), step.success)
                 is LessonStep.Practice -> BoardStep(vm, s.step, s.stepIndex == total - 1, step.prompt, "Proof complete. Nicely done.")
             }
@@ -250,6 +251,64 @@ private fun TableStep(vm: LessonViewModel, step: LessonStep.Table, st: StepState
         if (st.found) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
         else if (step.goal == TableGoal.COUNTEREXAMPLE && st.visited.size > 1)
             Text("Keep going: you need every premise TRUE and the conclusion FALSE at the same time.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+    }
+}
+
+/** Three things (a, b, c) and their properties; tap a square to give or take a property. */
+@Composable
+private fun WorldExplorer(vm: LessonViewModel, step: LessonStep.WorldStep, st: StepState) {
+    val p = LocalPalette.current
+    val world = vm.world(st.props)
+    val formulas = step.formulas.map(::f)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Eyebrow("Explore a world")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        Panel {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(56.dp))
+                    for (name in listOf("a", "b", "c")) Text(name, Modifier.weight(1f), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 18.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                for ((pred, things) in st.props.toSortedMap()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${pred}x", Modifier.width(56.dp), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        for (thing in 0..2) {
+                            val on = thing in things
+                            val name = "abc"[thing]
+                            Box(
+                                Modifier.weight(1f).padding(horizontal = 4.dp).height(52.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (on) p.accent else p.sunk)
+                                    .border(1.5.dp, if (on) p.accent else p.line, RoundedCornerShape(10.dp))
+                                    .clickable { vm.toggleProperty(pred, thing) }
+                                    .semantics { contentDescription = "$name is ${if (on) "" else "not "}$pred. Tap to change." },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(if (on) "$pred$name" else "¬$pred$name", fontFamily = Mono, color = if (on) p.onAccent else p.muted, fontWeight = FontWeight.SemiBold) }
+                        }
+                    }
+                }
+            }
+        }
+        Text("Tap a square to give a thing that property, or take it away.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+        Panel {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                formulas.forEachIndexed { i, fm ->
+                    val v = fm.eval(world)
+                    val label = if (step.argument) (if (i == formulas.lastIndex) "Conclusion" else "Premise") else null
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            if (label != null) Eyebrow(label)
+                            FormulaText((if (label == "Conclusion") "∴ " else "") + fm.show(), style = FormulaStyle.copy(fontSize = 19.sp))
+                        }
+                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (v) p.goodSoft else p.badSoft).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                            Text(if (v) "TRUE" else "FALSE", color = if (v) p.good else p.bad, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        }
+        if (step.goal == com.therefore.logic.content.WorldGoal.EVERY_WORLD && !st.found)
+            Text("Worlds tried: ${st.worldsSeen.size} of 6", style = MaterialTheme.typography.bodyMedium, color = p.muted)
+        if (st.found) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
     }
 }
 

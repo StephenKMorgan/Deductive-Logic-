@@ -10,6 +10,13 @@ enum class GoalShape { ATOM, NEG, AND, OR, IMP }
 /** How the model proof reaches the conclusion: directly, or through an assumption. */
 enum class Method { DIRECT, CONDITIONAL, INDIRECT }
 
+/**
+ * Ways to turn a propositional puzzle into a predicate-logic one.
+ * INSTANCE: "all F are G, a is F, so a is G". UNIVERSAL: all-to-all, ends with UG.
+ * EXISTENTIAL: one "some" premise, EI then EG. NEGATION: a premise written with ¬∃ / ¬∀, needs QN.
+ */
+enum class Lift { INSTANCE, UNIVERSAL, EXISTENTIAL, NEGATION }
+
 /** How a course generates puzzles. */
 data class Spec(
     val rules: List<Rule>,
@@ -25,6 +32,8 @@ data class Spec(
     val stop: Double,
     val goals: Map<GoalShape, Double>,
     val method: Method = Method.DIRECT,
+    /** Non-empty for predicate-logic courses: how puzzles are lifted into quantified form. */
+    val lift: Set<Lift> = emptySet(),
 )
 
 @Serializable
@@ -167,7 +176,9 @@ object Generator {
             GoalShape.ATOM -> a
             GoalShape.NEG -> not(a)
             else -> {
-                val b = freshAtom(ctx)
+                var b = freshAtom(ctx)
+                // Never P → P, P ∧ P and the like.
+                if (b == a) b = atom(ctx.letters.filter { it != (a as Formula.Atom).v }.let { it[ctx.rng.nextInt(it.size)] })
                 val left = if (ctx.rng.nextDouble() < 0.2) not(a) else a
                 Bin(when (shape) { GoalShape.AND -> Op.AND; GoalShape.OR -> Op.OR; else -> Op.IMP }, left, b)
             }
@@ -207,7 +218,7 @@ object Generator {
             val cites = if (st.rule.isStandard) st.from.map { f ->
                 (1..lines.size).lastOrNull { sc.available(it) && lines[it - 1].formula == f } ?: return false
             } else emptyList()
-            val r = Proofs.checkLine(lines, st.rule, cites, st.formula)
+            val r = Proofs.checkLine(lines, st.rule, cites, st.formula, puzzle.conclusion)
             if (!r.ok) return false
             lines = lines + ProofLine(st.formula, st.rule, r.cites)
         }
@@ -273,8 +284,86 @@ object Generator {
         return Puzzle(ctx.premises.shuffled(rng), goal, ctx.steps.toList())
     }
 
+    // ---------------- Predicate logic ----------------
+
+    private val PREDICATE_FOR = mapOf('P' to 'F', 'Q' to 'G', 'R' to 'H', 'S' to 'K', 'T' to 'L', 'U' to 'M')
+
+    /** Replaces each statement letter with a predicate applied to [t]: P becomes Ft, and so on. */
+    private fun Formula.lifted(t: Char): Formula = when (this) {
+        is Formula.Atom -> pred(PREDICATE_FOR.getValue(v), t)
+        is Not -> Not(a.lifted(t))
+        is Bin -> copy(a = a.lifted(t), b = b.lifted(t))
+        else -> this
+    }
+
+    private fun Step.lifted(t: Char) = Step(formula.lifted(t), rule, from.map { it.lifted(t) })
+
+    private fun attemptPredicate(spec: Spec, rng: Random, level: Int): Puzzle? {
+        val inner = spec.copy(
+            rules = spec.rules.filter { it.isStandard && !it.isQuantifierRule },
+            focus = emptyList(), lift = emptySet(), method = Method.DIRECT, letters = minOf(spec.letters, 4),
+        )
+        val base = attemptDirect(inner, rng, level) ?: return null
+        val lift = spec.lift.toList()[rng.nextInt(spec.lift.size)]
+        val x = 'x'
+        val a = 'a'
+        val puzzle = when (lift) {
+            Lift.INSTANCE -> {
+                // Some premises become "all" statements; the rest are about a.
+                val general = base.premises.map { rng.nextDouble() < 0.6 }.toMutableList()
+                if (general.none { it }) general[rng.nextInt(general.size)] = true
+                val premises = base.premises.mapIndexed { i, p -> if (general[i]) all(x, p.lifted(x)) else p.lifted(a) }
+                val ui = base.premises.withIndex().filter { general[it.index] }.map { (_, p) -> Step(p.lifted(a), Rule.UI, listOf(all(x, p.lifted(x)))) }
+                Puzzle(premises, base.conclusion.lifted(a), ui + base.solution.map { it.lifted(a) })
+            }
+            Lift.UNIVERSAL -> universalOrExistential(base, rng, existential = false)
+            Lift.EXISTENTIAL -> universalOrExistential(base, rng, existential = true)
+            // Either kind, with one premise disguised as "nothing is…".
+            Lift.NEGATION -> negateOnePremise(universalOrExistential(base, rng, existential = rng.nextBoolean()), rng) ?: return null
+        }
+        if (!satisfiable(puzzle.premises)) return null
+        if (puzzle.conclusion in puzzle.premises) return null
+        if (spec.focus.isNotEmpty() && puzzle.solution.none { it.rule in spec.focus }) return null
+        return Puzzle(puzzle.premises.shuffled(rng), puzzle.conclusion, puzzle.solution).takeIf(::verify)
+    }
+
+    /** All premises universal (or one existential), conclusion universal (or existential). */
+    private fun universalOrExistential(base: Puzzle, rng: Random, existential: Boolean): Puzzle {
+        val x = 'x'
+        if (!existential) {
+            val premises = base.premises.map { all(x, it.lifted(x)) }
+            val ui = base.premises.map { Step(it.lifted(x), Rule.UI, listOf(all(x, it.lifted(x)))) }
+            val c = base.conclusion.lifted(x)
+            return Puzzle(premises, all(x, c), ui + base.solution.map { it.lifted(x) } + Step(all(x, c), Rule.UG, listOf(c)))
+        }
+        val a = 'a'
+        val e = rng.nextInt(base.premises.size)
+        val premises = base.premises.mapIndexed { i, p -> if (i == e) some(x, p.lifted(x)) else all(x, p.lifted(x)) }
+        // EI first (the name must be new), then UI the "all" premises with the same name.
+        val ei = Step(base.premises[e].lifted(a), Rule.EI, listOf(some(x, base.premises[e].lifted(x))))
+        val ui = base.premises.withIndex().filter { it.index != e }.map { (_, p) -> Step(p.lifted(a), Rule.UI, listOf(all(x, p.lifted(x)))) }
+        val c = base.conclusion.lifted(a)
+        val conclusion = some(x, base.conclusion.lifted(x))
+        return Puzzle(premises, conclusion, listOf(ei) + ui + base.solution.map { it.lifted(a) } + Step(conclusion, Rule.EG, listOf(c)))
+    }
+
+    /** Rewrites one "all" premise as "nothing is…" (¬∃), so the proof needs QN first. */
+    private fun negateOnePremise(p: Puzzle, rng: Random): Puzzle? {
+        val candidates = p.premises.withIndex().filter { (it.value as? Formula.Quant)?.q == Quantifier.ALL }
+        if (candidates.isEmpty()) return null
+        val (i, f) = candidates[rng.nextInt(candidates.size)]
+        val q = f as Formula.Quant
+        val disguised = if (q.body is Not) not(some(q.v, q.body.a)) else not(some(q.v, not(q.body)))
+        val premises = p.premises.toMutableList().apply { this[i] = disguised }
+        return Puzzle(premises, p.conclusion, listOf(Step(f, Rule.QN, listOf(disguised))) + p.solution)
+    }
+
     fun generate(spec: Spec, level: Int, seed: Long): Puzzle {
         val rng = Random(seed)
+        if (spec.lift.isNotEmpty()) {
+            repeat(3000) { i -> attemptPredicate(spec, rng, if (i < 400) level else 1)?.let { return it } }
+            return generate(spec, 1, seed + 7919)
+        }
         repeat(3000) { i -> attempt(spec, rng, if (i < 400) level else 1)?.let { return it } }
         // Practically unreachable; fall back to a fresh seed rather than fail.
         return generate(spec, 1, seed + 7919)

@@ -5,6 +5,8 @@ import com.therefore.logic.content.LessonStep.Practice
 import com.therefore.logic.content.LessonStep.Quiz
 import com.therefore.logic.content.LessonStep.Read
 import com.therefore.logic.content.LessonStep.Table
+import com.therefore.logic.content.LessonStep.WorldStep
+import com.therefore.logic.engine.Lift
 import com.therefore.logic.engine.GoalShape.AND
 import com.therefore.logic.engine.GoalShape.ATOM
 import com.therefore.logic.engine.GoalShape.IMP
@@ -15,6 +17,8 @@ import com.therefore.logic.engine.Rule
 import com.therefore.logic.engine.Rule.*
 import com.therefore.logic.engine.Spec
 
+enum class Track { PROPOSITIONAL, PREDICATE }
+
 data class Course(
     val id: String,
     val title: String,
@@ -23,6 +27,7 @@ data class Course(
     val spec: Spec,
     val lessons: List<LessonDef>,
     val advanced: Boolean = false,
+    val track: Track = Track.PROPOSITIONAL,
 ) {
     /** The puzzle settings for free play on one lesson: same course, focused on that lesson's rules. */
     fun specFor(lesson: LessonDef?): Spec {
@@ -675,6 +680,192 @@ object Curriculum {
         ),
     )
 
+    // ================= Predicate logic =================
+
+    private val thingsLesson = LessonDef(
+        "pred-1", "Talking about things", "Predicates, names, and the two quantifiers.", emptyList(),
+        listOf(
+            Read(
+                "Looking inside statements",
+                listOf(
+                    "Propositional logic treats \"Socrates is mortal\" as one letter. Predicate logic looks inside it: Ms says that the thing s has the property M.",
+                    "Capital letters are predicates (properties like M, \"is mortal\"). Lowercase a, b, c are names of particular things. x, y and z are variables: they stand for any thing at all.",
+                ),
+            ),
+            Read(
+                "All and some",
+                listOf(
+                    "∀x Fx means \"everything is F\". ∃x Fx means \"at least one thing is F\".",
+                    "\"All F are G\" is written ∀x(Fx → Gx): for any thing, if it's F then it's G. \"Some F are G\" is ∃x(Fx ∧ Gx): at least one thing is both.",
+                ),
+            ),
+            WorldStep(
+                "Explore", "This world has three things, a, b and c. Tap the squares to give them property F. Make ∀x Fx true.",
+                listOf("∀x Fx"), WorldGoal.ALL_TRUE, success = "\"Everything is F\" is only true when every single thing has F.",
+            ),
+            WorldStep(
+                "Explore", "Now make ∃x Fx true but ∀x Fx false.",
+                listOf("∃x Fx", "∀x Fx"), WorldGoal.COUNTEREXAMPLE, success = "Right: something is F, but not everything is.",
+            ),
+            WorldStep(
+                "Break it", "∀x(Fx → Gx) says \"all F are G\". Make it false.",
+                listOf("∀x(Fx → Gx)"), WorldGoal.FALSE, success = "One thing that's F but not G is enough to break \"all F are G\".",
+            ),
+            Quiz(
+                "Translate", "\"All cats are mammals\" (Cx: x is a cat, Mx: x is a mammal)",
+                listOf("∀x(Cx → Mx)", "∀x(Cx ∧ Mx)", "∃x(Cx → Mx)"), 0,
+                "For anything, if it's a cat then it's a mammal. ∀x(Cx ∧ Mx) would claim that everything is a cat.",
+            ),
+            Quiz(
+                "Translate", "\"Some cats are black\" (Cx: x is a cat, Bx: x is black)",
+                listOf("∃x(Cx ∧ Bx)", "∃x(Cx → Bx)", "∀x(Cx → Bx)"), 0,
+                "At least one thing is both a cat and black. ∃x(Cx → Bx) is true as soon as anything at all isn't a cat.",
+            ),
+        ),
+    )
+
+    private val uiLesson = LessonDef(
+        "pred-2", "Universal Instantiation", "What's true of everything is true of each thing.", listOf(UI),
+        listOf(
+            Read("Dropping ∀", listOf("If everything is F, then any particular thing is F. From ∀x Fx you may write Fa, or Fb, or Fx: the same statement about one thing."), rules = listOf(UI)),
+            Guided(
+                "Socrates", listOf("∀x(Hx → Mx)", "Hs"), "Ms", listOf(UI, MP),
+                listOf(
+                    Coach("Line 1 says every human is mortal. Cite it, choose UI, and write Hs → Ms: the same statement about s (Socrates).") { it.has("Hs → Ms") },
+                    Coach("Now Modus Ponens with line 2 finishes the proof.") { it.done },
+                ),
+                "Done: the most famous argument in logic. Socrates is mortal.",
+                solution = listOf("Hs → Ms" to "1, UI", "Ms" to "3, 2, MP"),
+            ),
+            Practice(
+                "Your turn", "Instantiate both \"all\" statements with a.", listOf("∀x(Fx → Gx)", "∀x(Gx → Hx)", "Fa"), "Ha", listOf(UI, MP, HS),
+                solution = listOf("Fa → Ga" to "1, UI", "Ga" to "4, 3, MP", "Ga → Ha" to "2, UI", "Ha" to "6, 5, MP"),
+            ),
+        ),
+    )
+
+    private val egLesson = LessonDef(
+        "pred-3", "Existential Generalization", "If this thing is F, something is.", listOf(EG),
+        listOf(
+            Read("Adding ∃", listOf("If a particular thing is F, then something is F. From Fa you may write ∃x Fx."), rules = listOf(EG)),
+            Practice(
+                "Your turn", "Get Ga, then generalize.", listOf("∀x(Fx → Gx)", "Fa"), "∃x Gx", listOf(UI, MP, EG),
+                solution = listOf("Fa → Ga" to "1, UI", "Ga" to "3, 2, MP", "∃x Gx" to "4, EG"),
+            ),
+            Quiz(
+                "Check", "From Fa ∧ Gb, which line can EG give?", listOf("∃x(Fx ∧ Gb)", "∃x(Fx ∧ Gx)", "∀x(Fx ∧ Gb)"), 0,
+                "EG replaces one name with the variable. a and b are different things, so they can't both become x.",
+            ),
+        ),
+    )
+
+    private val ugLesson = LessonDef(
+        "pred-4", "Proving \"all\"", "Universal Generalization from an arbitrary x.", listOf(UG),
+        listOf(
+            Read(
+                "Arbitrary things",
+                listOf(
+                    "To prove ∀x Fx, show Fx, where x is an arbitrary thing you know nothing special about. Then UG lets you write ∀x Fx.",
+                    "Never generalize from a name. Fa might be true only of a.",
+                ),
+                rules = listOf(UG),
+            ),
+            Guided(
+                "All F are H", listOf("∀x(Fx → Gx)", "∀x(Gx → Hx)"), "∀x(Fx → Hx)", listOf(UI, HS, UG),
+                listOf(
+                    Coach("Cite line 1, choose UI, and instantiate with the variable x: write Fx → Gx.") { it.has("Fx → Gx") },
+                    Coach("Do the same with line 2.") { it.has("Gx → Hx") },
+                    Coach("Chain them with HS.") { it.has("Fx → Hx") },
+                    Coach("x was arbitrary, so generalize: cite line 5, choose UG and write ∀x(Fx → Hx).") { it.done },
+                ),
+                "Done: if all F are G and all G are H, then all F are H.",
+                solution = listOf("Fx → Gx" to "1, UI", "Gx → Hx" to "2, UI", "Fx → Hx" to "3, 4, HS", "∀x(Fx → Hx)" to "5, UG"),
+            ),
+            Quiz("Check", "From Fa, can UG give ∀x Fx?", listOf("No: a is one particular thing", "Yes"), 0, "Knowing that one thing is F says nothing about everything else."),
+        ),
+    )
+
+    private val eiLesson = LessonDef(
+        "pred-5", "Naming a \"some\"", "Existential Instantiation and the new-name rule.", listOf(EI),
+        listOf(
+            Read(
+                "Give it a name",
+                listOf(
+                    "From ∃x Fx you may name the thing that's F: write Fa. But the name must be new. If a already appears in the proof, you'd be assuming that the F thing is that same a.",
+                ),
+                rules = listOf(EI),
+            ),
+            WorldStep(
+                "Why the name must be new", "\"Something is F. Something is G. So something is both.\" Find a world where both premises are true but the conclusion is false.",
+                listOf("∃x Fx", "∃x Gx", "∃x(Fx ∧ Gx)"), WorldGoal.COUNTEREXAMPLE, argument = true,
+                success = "One thing is F and a different thing is G. Reusing one name for both would \"prove\" this false conclusion.",
+            ),
+            Guided(
+                "EI first", listOf("∀x(Fx → Gx)", "∃x Fx"), "∃x Gx", listOf(EI, UI, MP, EG),
+                listOf(
+                    Coach("Do EI first, while every name is still new: cite line 2, choose EI and write Fa.") { it.has("Fa") },
+                    Coach("Now use UI on line 1 with the same name: Fa → Ga.") { it.has("Fa → Ga") },
+                    Coach("MP gives Ga.") { it.has("Ga") },
+                    Coach("Finish with EG.") { it.done },
+                ),
+                "Done. EI picked the name, UI followed it, EG generalized at the end.",
+                solution = listOf("Fa" to "2, EI", "Fa → Ga" to "1, UI", "Ga" to "4, 3, MP", "∃x Gx" to "5, EG"),
+            ),
+            Quiz(
+                "Check", "Why do EI before UI?", listOf("UI can use any name, but EI needs a new one", "UI only works on new names", "The order doesn't matter"), 0,
+                "If UI used a first, a would no longer be new, and EI couldn't use it.",
+            ),
+        ),
+    )
+
+    private val qnLesson = LessonDef(
+        "pred-6", "Not all, not any", "Quantifier Negation: De Morgan for ∀ and ∃.", listOf(QN),
+        listOf(
+            Read(
+                "Moving the negation",
+                listOf(
+                    "¬∀x Fx (\"not everything is F\") means ∃x ¬Fx (\"something isn't F\").",
+                    "¬∃x Fx (\"nothing is F\") means ∀x ¬Fx (\"everything is not F\"). QN swaps the quantifier as the negation passes through it.",
+                ),
+                rules = listOf(QN),
+            ),
+            WorldStep(
+                "See it", "Try every world: tap the squares in different combinations. The two statements always agree.",
+                listOf("¬∀x Fx", "∃x ¬Fx"), WorldGoal.EVERY_WORLD, success = "They agree in every world, so you can always swap one for the other.",
+            ),
+            Quiz("Check", "¬∃x Fx says:", listOf("Nothing is F", "Something isn't F", "Not everything is F"), 0, "There isn't anything that's F: everything is not F."),
+            Practice(
+                "Your turn", "QN, then UI, then unpack it with De Morgan.", listOf("¬∃x(Fx ∧ ¬Gx)", "Fa"), "Ga", listOf(QN, UI, DeM, DN, Impl, MP),
+                solution = listOf(
+                    "∀x ¬(Fx ∧ ¬Gx)" to "1, QN", "¬(Fa ∧ ¬Ga)" to "3, UI", "¬Fa ∨ ¬¬Ga" to "4, DeM", "¬Fa ∨ Ga" to "5, DN", "Fa → Ga" to "6, Impl", "Ga" to "7, 2, MP",
+                ),
+            ),
+        ),
+    )
+
+    private val PRED_INNER = listOf(MP, MT, HS, DS, Simp, Conj)
+
+    val predicateCourses = listOf(
+        Course(
+            "pred-quant", "Quantifiers", "∀ · ∃ · UI · EG", "What \"all\" and \"some\" mean, and how to use them.",
+            Spec(PRED_INNER + listOf(UI, EG), emptyList(), 1..3, 1..4, 3, 0.2, 6, 0.15, mapOf(ATOM to 3.0, NEG to 1.0), lift = setOf(Lift.INSTANCE)),
+            listOf(thingsLesson, uiLesson, egLesson), track = Track.PREDICATE,
+        ),
+        Course(
+            "pred-allsome", "All and Some", "UG · EI", "Prove \"all\" statements and reason from \"some\".",
+            Spec(PRED_INNER + listOf(Add, UI, EG, EI, UG), emptyList(), 1..3, 1..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0), lift = setOf(Lift.UNIVERSAL, Lift.EXISTENTIAL)),
+            listOf(ugLesson, eiLesson), track = Track.PREDICATE,
+        ),
+        Course(
+            "pred-qn", "Quantifier Negation", "QN", "\"Not all\" and \"none\": moving negations past quantifiers.",
+            Spec(PRED_INNER + listOf(Add, DN, DeM, Impl, UI, EG, EI, UG, QN), emptyList(), 1..3, 1..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0), lift = setOf(Lift.NEGATION)),
+            listOf(qnLesson), track = Track.PREDICATE,
+        ),
+    )
+
+    /** Every course, both tabs. */
+    val allCourses get() = courses + predicateCourses
+
     const val DAILY_ID = "daily"
     const val DAILY_LEVEL = 3
 
@@ -684,10 +875,10 @@ object Curriculum {
         emptyList(),
     )
 
-    fun byId(id: String): Course = if (id == DAILY_ID) daily else courses.first { it.id == id }
+    fun byId(id: String): Course = if (id == DAILY_ID) daily else allCourses.first { it.id == id }
 
     fun lesson(id: String): Pair<Course, LessonDef> =
-        courses.firstNotNullOf { c -> c.lessons.firstOrNull { it.id == id }?.let { c to it } }
+        allCourses.firstNotNullOf { c -> c.lessons.firstOrNull { it.id == id }?.let { c to it } }
 
     /** All rules a board should offer, in menu order. */
     fun boardRules(rules: List<Rule>): List<Rule> = Rule.entries.filter { it in rules }
