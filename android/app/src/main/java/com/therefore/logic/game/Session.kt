@@ -69,7 +69,17 @@ object Session {
         return Outcome(s.touched().copy(tokens = tokens, caret = tokens.size))
     }
 
-    fun selectRule(s: GameState, r: Rule?) = Outcome(s.touched().copy(rule = r))
+    /** Picking ACP, AIP, CP or IP with an empty input fills in the line that rule most likely wants. */
+    fun selectRule(s: GameState, r: Rule?): Outcome {
+        // If the input still holds what the previous rule filled in, it isn't the player's work: replace it.
+        val prevFill = s.rule?.let { Proofs.suggestion(s.puzzle.conclusion, s.lines, it) }?.first
+        val untouchedFill = prevFill != null && s.tokens.joinToString("") == prevFill.show().filter { !it.isWhitespace() }
+        val base = if (untouchedFill) s.touched().copy(rule = r, tokens = emptyList(), caret = 0, feedback = null) else s.touched().copy(rule = r)
+        if (r == null || base.tokens.isNotEmpty()) return Outcome(base)
+        val (f, note) = Proofs.suggestion(s.puzzle.conclusion, s.lines, r) ?: return Outcome(base)
+        val tokens = f.show().filter { !it.isWhitespace() }.toList()
+        return Outcome(base.copy(tokens = tokens, caret = tokens.size, feedback = Feedback(FeedbackKind.INFO, note)))
+    }
 
     fun fillHint(s: GameState): Outcome {
         val f = s.feedback?.fill ?: return Outcome(s)
@@ -99,7 +109,19 @@ object Session {
             )
         }
         val lines = s.lines + ProofLine(formula, rule, res.cites)
-        val message = when (rule.kind) {
+        val clash = Proofs.contradictions(lines)
+        val innermostIsAip = Proofs.scopes(lines).open.lastOrNull()?.let { lines[it - 1].rule == Rule.AIP } == true
+        val n = lines.size
+        val contradictionNote = if (rule.isStandard && n in clash) {
+            val other = clash[n]
+            when {
+                other == null && innermostIsAip -> "Contradiction! Line $n can't be true. Close the assumption with IP."
+                other == null -> "Contradiction! Line $n can't be true, so something you assumed is impossible."
+                innermostIsAip -> "Contradiction! Lines $other and $n say opposite things. Join them with Conj, then close the assumption with IP."
+                else -> "Contradiction! Lines $other and $n say opposite things."
+            }
+        } else null
+        val message = contradictionNote ?: when (rule.kind) {
             RuleKind.ASSUMPTION -> "Assumed $formula. Lines below are indented until you close it with ${if (rule == Rule.ACP) "CP" else "IP"}."
             RuleKind.CLOSE -> "Subproof closed: line ${lines.size} no longer depends on the assumption."
             else -> "Line ${lines.size} checks out: ${rule.title}."
@@ -165,8 +187,10 @@ object Session {
         val result = if (s.revealed) GameResult(Grades.REVEALED, 0, 0, model, yours, seconds) else {
             val raw = 100 - 8 * s.mistakes.size - s.hintPenalty - 4 * maxOf(0, yours - model)
             val score = raw.coerceIn(50, 100)
-            val grade = when { score >= 90 -> "A"; score >= 80 -> "B"; score >= 70 -> "C"; else -> "D" }
-            GameResult(grade, when (grade) { "A" -> 3; "B" -> 2; else -> 1 }, score, model, yours, seconds)
+            // S rank (daily proof only): no mistakes, no hints, and no more lines than the model proof.
+            val perfect = s.mode == Mode.DAILY && s.mistakes.isEmpty() && s.hints == 0 && yours <= model
+            val grade = when { perfect -> Grades.S; score >= 90 -> "A"; score >= 80 -> "B"; score >= 70 -> "C"; else -> "D" }
+            GameResult(grade, when (grade) { Grades.S, "A" -> 3; "B" -> 2; else -> 1 }, score, model, yours, seconds)
         }
         return s.copy(done = true, result = result)
     }

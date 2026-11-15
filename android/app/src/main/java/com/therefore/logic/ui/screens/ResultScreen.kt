@@ -84,6 +84,7 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
 
     val verdict = when {
         revealed -> "Solution shown"
+        r.grade == Grades.S -> "S rank: a perfect proof"
         r.grade == "A" -> if (state.mistakes.isEmpty() && state.hints == 0) "Flawless proof" else "Strong proof"
         r.grade == "B" -> "Good proof"
         r.grade == "C" -> "Proof complete"
@@ -101,6 +102,14 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
                 },
             )
             if (state.mistakes.isEmpty()) add("Every line you submitted was correct.")
+            if (state.isDaily && r.grade != Grades.S) add(
+                "S rank needs no mistakes, no hints, and ${r.modelLines} lines or fewer (par). " +
+                    listOfNotNull(
+                        "you made ${state.mistakes.size} mistake${if (state.mistakes.size > 1) "s" else ""}".takeIf { state.mistakes.isNotEmpty() },
+                        "you used hints".takeIf { state.hints > 0 },
+                        "you used ${r.yourLines} lines".takeIf { r.yourLines > r.modelLines },
+                    ).joinToString(", ").replaceFirstChar { it.uppercase() } + ".",
+            )
             if (state.hints > 0) add("You used ${state.hints} hint${if (state.hints > 1) "s" else ""}. Next time, try working backward from the conclusion before asking.")
         }
     }
@@ -185,7 +194,7 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
                     if (state.isDaily) {
                         Button(onClick = {
                             val text = "Therefore · Daily proof ${state.date}\nGrade ${r.grade} ${"★".repeat(r.stars)}${"☆".repeat(3 - r.stars)} · " +
-                                "${r.yourLines} lines · ${state.mistakes.size} mistakes · ${state.hints} hints"
+                                "${r.yourLines} lines (par ${r.modelLines}) · ${state.mistakes.size} mistakes · ${state.hints} hints"
                             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
                             context.startActivity(Intent.createChooser(send, "Share your result"))
                         }, Modifier.fillMaxWidth()) { Text("Share result") }
@@ -206,6 +215,7 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
 private fun GradeCard(grade: String, stars: Int, score: Int, verdict: String, revealed: Boolean) {
     val p = LocalPalette.current
     val (fg, bg) = when (grade) {
+        Grades.S -> p.star to p.hintSoft
         "A" -> p.good to p.goodSoft
         "B" -> p.accent to p.accentSoft
         Grades.REVEALED -> p.muted to p.sunk

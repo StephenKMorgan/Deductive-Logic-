@@ -188,6 +188,54 @@ class EngineTest {
         }
     }
 
+    @Test fun assumptionRulesFillInTheLikelyLine() {
+        val puzzle = Puzzle(listOf(p("(P & Q) -> R"), p("~R")), p("P -> ~Q"), emptyList())
+        var s = Session.newGame("t", 1, Mode.LESSON, puzzle, Rule.entries)
+        s = Session.selectRule(s, Rule.ACP).state
+        assertEquals("P", s.tokens.joinToString(""))
+        s = Session.addLine(s).state
+        s = Session.selectRule(s, Rule.AIP).state        // inside, the goal is ¬Q, so assume Q
+        assertEquals("Q", s.tokens.joinToString(""))
+        s = Session.selectRule(s, Rule.MP).state         // switching away clears the untouched fill
+        assertTrue(s.tokens.isEmpty())
+        s = Session.selectRule(s, Rule.AIP).state
+        s = Session.addLine(s).state
+        s = Session.selectRule(s, Rule.IP).state
+        assertEquals("¬Q", s.tokens.joinToString(""))
+        // A typed line is never overwritten.
+        var t = Session.newGame("t", 1, Mode.LESSON, puzzle, Rule.entries)
+        t = Session.key(t, 'R').state
+        t = Session.selectRule(t, Rule.ACP).state
+        assertEquals("R", t.tokens.joinToString(""))
+    }
+
+    @Test fun contradictionsAreFlagged() {
+        val lines = listOf(ProofLine(p("Q"), null), ProofLine(p("P"), Rule.AIP), ProofLine(p("~Q"), Rule.MP, listOf(1, 2)))
+        val c = Proofs.contradictions(lines)
+        assertEquals(setOf(1, 3), c.keys)
+        assertTrue(Proofs.contradictions(lines + ProofLine(p("Q & ~Q"), Rule.Conj, listOf(1, 3))).containsKey(4))
+        // Once the subproof closes, its lines no longer count.
+        val closed = lines + ProofLine(p("Q & ~Q"), Rule.Conj, listOf(1, 3)) + ProofLine(p("~P"), Rule.IP, listOf(2, 4))
+        assertTrue(Proofs.contradictions(closed).isEmpty())
+    }
+
+    @Test fun sRankNeedsAPerfectDailyAtOrUnderPar() {
+        val puzzle = Generator.generate(Curriculum.daily.spec, 3, 5L)
+        fun solve(mode: Mode, hintsFirst: Boolean): String {
+            var s = Session.newGame("daily", 3, mode, puzzle, Rule.entries)
+            for (st in Proofs.numbered(puzzle).drop(puzzle.premises.size)) {
+                if (hintsFirst) { s = Session.hint(s).state }
+                s = s.copy(tokens = st.formula.show().filter { !it.isWhitespace() }.toList(), caret = 0, rule = st.rule, cites = if (st.rule!!.isStandard) st.cites else emptyList())
+                s = Session.addLine(s).state
+            }
+            assertTrue(s.done)
+            return s.result!!.grade
+        }
+        assertEquals("S", solve(Mode.DAILY, hintsFirst = false))
+        assertEquals("A", solve(Mode.PRACTICE, hintsFirst = false))   // S is for the daily proof only
+        assertTrue(solve(Mode.DAILY, hintsFirst = true) != "S")
+    }
+
     @Test fun dailyPuzzleIsTheSameForTheSameSeed() {
         val a = Generator.generate(Curriculum.daily.spec, 3, 12345L)
         val b = Generator.generate(Curriculum.daily.spec, 3, 12345L)

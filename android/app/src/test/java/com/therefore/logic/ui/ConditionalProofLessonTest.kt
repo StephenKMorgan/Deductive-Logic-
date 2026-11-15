@@ -68,8 +68,8 @@ class ConditionalProofLessonTest {
         shot("C1-read")
         tap("Continue")
         waitFor("assume its \"if\" part")
-        tap("ACP")
-        tapDesc("P")
+        tap("ACP")          // fills in P
+        waitFor("Filled in P")
         tapDesc("Add line")
         waitFor("Use MP on lines 1 and 2")
         tap("MP")
@@ -83,8 +83,7 @@ class ConditionalProofLessonTest {
         tapDesc("Q")
         tapDesc("Add line")
         waitFor("Close the subproof")
-        tap("CP")
-        tapDesc("P"); tapDesc("if then"); tapDesc("Q")
+        tap("CP")           // fills in P → Q
         tapDesc("Add line")
         waitFor("back at the left margin")
         shot("C3-closed")

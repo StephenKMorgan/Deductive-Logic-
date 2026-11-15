@@ -97,6 +97,7 @@ fun TipBox(title: String, body: String, warn: Boolean = false) {
 fun GradeBadge(grade: String?, modifier: Modifier = Modifier, size: Int = 36) {
     val p = LocalPalette.current
     val (fg, bg) = when (grade) {
+        "S" -> p.onAccent to p.star
         "A" -> p.good to p.goodSoft
         "B" -> p.accent to p.accentSoft
         "C", "D" -> p.hint to p.hintSoft

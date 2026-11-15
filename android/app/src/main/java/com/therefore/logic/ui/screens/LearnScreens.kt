@@ -210,9 +210,10 @@ fun DailyScreen(progress: Progress, inProgress: Boolean, onStart: () -> Unit) {
                     }
                     Text(
                         when {
-                            result == null -> "A mixed puzzle that can use any of the 18 rules. Medium length."
+                            result == null -> "A mixed puzzle that can use any of the 18 rules. Solve it with no mistakes, no hints and no more lines than par for an S rank."
                             result.studied -> "You studied today's solution. A new proof arrives tomorrow."
-                            else -> "You solved today's proof with grade ${result.grade}. You can replay it, but your best grade is kept."
+                            result.grade == "S" -> "S rank today: a perfect proof. Come back tomorrow for a new one."
+                            else -> "You solved today's proof with grade ${result.grade}. Replay it for an S rank: no mistakes, no hints, and no more lines than par. Your best grade is kept."
                         },
                         style = MaterialTheme.typography.bodyLarge,
                     )

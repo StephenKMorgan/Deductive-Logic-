@@ -389,7 +389,7 @@ object Curriculum {
             Read(
                 "Conditional Proof",
                 listOf(
-                    "To prove P → Q, you may assume P (ACP) and see what follows. Lines after an assumption are indented: they depend on it.",
+                    "To prove P → Q, you may assume P (ACP) and see what follows. Lines after an assumption are indented: they depend on it. Picking ACP fills in the \"if\" part for you.",
                     "Once you reach Q, close the assumption with CP and write P → Q. After closing, the indented lines can't be cited any more, because they only held under the assumption.",
                 ),
                 Example(
@@ -401,10 +401,10 @@ object Curriculum {
             Guided(
                 "Your first subproof", listOf("P → (Q ∧ R)"), "P → Q", listOf(MP, Simp, ACP, CP),
                 listOf(
-                    Coach("The goal is a conditional, so assume its \"if\" part. Choose ACP from the rule menu, write P and tap Add line.") { it.hasAssumed("P", ACP) },
+                    Coach("The goal is a conditional, so assume its \"if\" part. Tap ACP: it fills in P for you. Then tap Add line.") { it.hasAssumed("P", ACP) },
                     Coach("Line 2 is indented: it's an assumption. Use MP on lines 1 and 2.") { it.has("Q ∧ R") },
                     Coach("Take out Q with Simp.") { it.has("Q") },
-                    Coach("Close the subproof: choose CP and write P → Q. You don't need to cite lines; CP uses the whole subproof.") { it.done },
+                    Coach("Close the subproof: tap CP. It fills in P → Q, and you don't need to cite lines because CP uses the whole subproof. Tap Add line.") { it.done },
                 ),
                 "Done. Line 5 sits back at the left margin: it no longer depends on any assumption.",
                 solution = listOf("P" to "ACP", "Q ∧ R" to "1, 2, MP", "Q" to "3, Simp", "P → Q" to "CP"),
@@ -421,6 +421,90 @@ object Curriculum {
         ),
     )
 
+    private val cpNested = LessonDef(
+        "cp-3", "Assumptions inside assumptions", "Nest one subproof in another.", listOf(ACP, CP),
+        listOf(
+            Read(
+                "Nesting",
+                listOf(
+                    "You can open an assumption while another is still open. Each one adds a bar on the left.",
+                    "Close them in reverse order: the most recent assumption always closes first. Picking ACP fills in the \"if\" part of whatever conditional you're working toward, and CP fills in the line that closes it.",
+                ),
+                Example(
+                    listOf(
+                        "(P ∧ Q) → R" to "Premise", "P" to "ACP", "Q" to "ACP", "P ∧ Q" to "2, 3, Conj", "R" to "1, 4, MP",
+                        "Q → R" to "3–5, CP", "P → (Q → R)" to "2–6, CP",
+                    ),
+                    "P → (Q → R)", depths = listOf(0, 1, 2, 2, 2, 1, 0),
+                ),
+            ),
+            Guided(
+                "Two levels deep", listOf("(P ∧ Q) → R"), "P → (Q → R)", listOf(Conj, MP, ACP, CP),
+                listOf(
+                    Coach("The goal is P → (Q → R). Choose ACP: it fills in P. Tap Add line.") { it.hasAssumed("P", ACP) },
+                    Coach("Inside, you're now proving Q → R, another conditional. Choose ACP again: it fills in Q.") { it.hasAssumed("Q", ACP) },
+                    Coach("Two bars mean two open assumptions. Join P and Q: cite lines 2 and 3 and choose Conj.") { it.has("P ∧ Q") },
+                    Coach("Use MP with line 1 to get R.") { it.has("R") },
+                    Coach("Close the inner assumption: choose CP (it fills in Q → R) and add it.") { it.has("Q → R") },
+                    Coach("Close the outer assumption the same way.") { it.done },
+                ),
+                "Done. Each CP closed one assumption, most recent first.",
+                solution = listOf("P" to "ACP", "Q" to "ACP", "P ∧ Q" to "2, 3, Conj", "R" to "1, 4, MP", "Q → R" to "CP", "P → (Q → R)" to "CP"),
+            ),
+            Quiz("Check", "With two assumptions open, which one must you close first?", listOf("The most recent one", "The first one", "Either one"), 0, "Subproofs nest like brackets: the innermost one closes first."),
+        ),
+    )
+
+    private val cpBiconditional = LessonDef(
+        "cp-4", "Proving a biconditional", "Two conditional proofs, one for each direction.", listOf(CP, Equiv),
+        listOf(
+            Read(
+                "Both directions",
+                listOf(
+                    "P ↔ Q says each side implies the other. To prove it, prove P → Q and Q → P with two separate conditional proofs.",
+                    "Then join the two conditionals with Conj and turn them into P ↔ Q with Material Equivalence.",
+                ),
+                rules = listOf(Equiv),
+            ),
+            Practice(
+                "Your turn", "Prove P → Q, then Q → P, then join them.", listOf("P → (Q ∧ R)", "Q → (P ∧ S)"), "P ↔ Q", listOf(MP, Simp, Conj, Equiv, ACP, CP),
+                solution = listOf(
+                    "P" to "ACP", "Q ∧ R" to "1, 3, MP", "Q" to "4, Simp", "P → Q" to "CP",
+                    "Q" to "ACP", "P ∧ S" to "2, 7, MP", "P" to "8, Simp", "Q → P" to "CP",
+                    "(P → Q) ∧ (Q → P)" to "6, 10, Conj", "P ↔ Q" to "11, Equiv",
+                ),
+            ),
+        ),
+    )
+
+    private val cpTheorems = LessonDef(
+        "cp-5", "Proofs with no premises", "Some statements are true no matter what.", listOf(CP),
+        listOf(
+            Read(
+                "Theorems",
+                listOf(
+                    "A theorem is true whatever the letters mean, so it can be proved from no premises at all.",
+                    "The trick is to start with an assumption. Conditional Proof lets you build the whole theorem out of subproofs.",
+                ),
+            ),
+            Guided(
+                "Proving Transposition", emptyList(), "(P → Q) → (¬Q → ¬P)", listOf(MT, ACP, CP),
+                listOf(
+                    Coach("There are no premises. The goal is a conditional, so choose ACP: it fills in P → Q. Add it.") { it.hasAssumed("P → Q", ACP) },
+                    Coach("Inside, the goal is ¬Q → ¬P. Choose ACP again: it fills in ¬Q.") { it.hasAssumed("¬Q", ACP) },
+                    Coach("Use MT on lines 1 and 2.") { it.has("¬P") },
+                    Coach("Close both assumptions with CP, the inner one first.") { it.done },
+                ),
+                "Done. You proved the Transposition rule itself, from nothing.",
+                solution = listOf("P → Q" to "ACP", "¬Q" to "ACP", "¬P" to "1, 2, MT", "¬Q → ¬P" to "CP", "(P → Q) → (¬Q → ¬P)" to "CP"),
+            ),
+            Practice(
+                "Your turn", "Three nested conditionals. Assume each \"if\" part in turn.", emptyList(), "(P → Q) → ((Q → R) → (P → R))", listOf(HS, ACP, CP),
+                solution = listOf("P → Q" to "ACP", "Q → R" to "ACP", "P → R" to "1, 2, HS", "(Q → R) → (P → R)" to "CP", "(P → Q) → ((Q → R) → (P → R))" to "CP"),
+            ),
+        ),
+    )
+
     // ---------------- Course 10 (advanced) ----------------
     private val ipLesson = LessonDef(
         "ip-1", "Proof by contradiction", "Assume the opposite and show it's impossible.", listOf(AIP, IP),
@@ -429,7 +513,7 @@ object Curriculum {
                 "Indirect Proof",
                 listOf(
                     "To prove ¬P, assume P (AIP). If that leads to a contradiction, a line like Q ∧ ¬Q, the assumption must be false, so ¬P. Close it with IP.",
-                    "To prove P itself, assume ¬P instead.",
+                    "To prove P itself, assume ¬P instead. You may assume anything, but the opposite of what you want is almost always the right choice, so AIP fills it in for you.",
                 ),
                 Example(
                     listOf("P → Q" to "Premise", "P → ¬Q" to "Premise", "P" to "AIP", "Q" to "1, 3, MP", "¬Q" to "2, 3, MP", "Q ∧ ¬Q" to "4, 5, Conj", "¬P" to "3–6, IP"),
@@ -440,10 +524,10 @@ object Curriculum {
             Guided(
                 "Find the contradiction", listOf("P → Q", "P → ¬Q"), "¬P", listOf(MP, Conj, AIP, IP),
                 listOf(
-                    Coach("To prove ¬P, assume the opposite. Choose AIP and write P.") { it.hasAssumed("P", AIP) },
+                    Coach("To prove ¬P, assume the opposite. Choose AIP: it fills in P for you. Tap Add line.") { it.hasAssumed("P", AIP) },
                     Coach("Use Modus Ponens twice to get both Q and ¬Q.") { it.has("Q") && it.has("¬Q") },
                     Coach("Join them with Conj into Q ∧ ¬Q: a contradiction.") { it.has("Q ∧ ¬Q") || it.has("¬Q ∧ Q") },
-                    Coach("The assumption led to the impossible, so it's false. Choose IP and write ¬P.") { it.done },
+                    Coach("The assumption led to the impossible, so it's false. Choose IP: it fills in ¬P.") { it.done },
                 ),
                 "Done. Indirect Proof can prove almost anything that is provable, so it's a good fallback when you're stuck.",
                 solution = listOf("P" to "AIP", "Q" to "1, 3, MP", "¬Q" to "2, 3, MP", "Q ∧ ¬Q" to "4, 5, Conj", "¬P" to "IP"),
@@ -456,6 +540,85 @@ object Curriculum {
         "ip-2", "Indirect proof practice", "Contradictions that take some finding.", listOf(IP),
         listOf(
             Practice("Both roads lead to R", "Assume ¬R and follow it back through both conditionals.", listOf("P ∨ Q", "P → R", "Q → R"), "R", listOf(MT, DS, MP, Conj, AIP, IP), solution = listOf("¬R" to "AIP", "¬P" to "2, 4, MT", "Q" to "1, 5, DS", "R" to "3, 6, MP", "R ∧ ¬R" to "7, 4, Conj", "R" to "IP")),
+        ),
+    )
+
+    private val ipPositive = LessonDef(
+        "ip-3", "Proving a positive", "Assume the negation to prove P itself.", listOf(AIP, IP),
+        listOf(
+            Read(
+                "Assume the opposite",
+                listOf(
+                    "To prove P, assume ¬P. If that leads to a contradiction, ¬P is impossible, so P is true.",
+                    "When two lines contradict each other, both turn red. That's your cue to join them with Conj and close with IP.",
+                ),
+            ),
+            Guided(
+                "Watch for red", listOf("¬P → Q", "¬Q"), "P", listOf(MP, Conj, AIP, IP),
+                listOf(
+                    Coach("Choose AIP: it fills in ¬P, the opposite of P. Add it.") { it.hasAssumed("¬P", AIP) },
+                    Coach("Use MP on lines 1 and 3.") { it.has("Q") },
+                    Coach("Lines 2 and 4 turned red: they contradict each other. Join them with Conj.") { it.has("Q ∧ ¬Q") || it.has("¬Q ∧ Q") },
+                    Coach("Close with IP: it fills in P.") { it.done },
+                ),
+                "Done. ¬P led to the impossible, so P.",
+                solution = listOf("¬P" to "AIP", "Q" to "1, 3, MP", "Q ∧ ¬Q" to "4, 2, Conj", "P" to "IP"),
+            ),
+            Quiz("Check", "You want to prove S by Indirect Proof. What do you assume?", listOf("¬S", "S", "¬¬S"), 0, "Assume the opposite of what you want. If ¬S leads to a contradiction, S must be true."),
+        ),
+    )
+
+    private val ipDisguise = LessonDef(
+        "ip-4", "Contradictions in disguise", "Bigger statements can contradict too.", listOf(IP),
+        listOf(
+            Read(
+                "Not just letters",
+                listOf(
+                    "A contradiction is any statement next to its exact negation: P ∧ Q against ¬(P ∧ Q) counts just as much as P against ¬P.",
+                    "Sometimes you need a replacement rule, like De Morgan, before the clash shows.",
+                ),
+            ),
+            Practice(
+                "Spot it", "Build P ∧ Q, then look at line 1.", listOf("¬(P ∧ Q)", "P"), "¬Q", listOf(Conj, AIP, IP),
+                solution = listOf("Q" to "AIP", "P ∧ Q" to "2, 3, Conj", "(P ∧ Q) ∧ ¬(P ∧ Q)" to "4, 1, Conj", "¬Q" to "IP"),
+            ),
+            Practice(
+                "Unmask it", "Use De Morgan on line 1 to find ¬P.", listOf("¬(P ∨ Q)", "R → P"), "¬R", listOf(MP, DeM, Simp, Conj, AIP, IP),
+                solution = listOf("R" to "AIP", "P" to "2, 3, MP", "¬P ∧ ¬Q" to "1, DeM", "¬P" to "5, Simp", "P ∧ ¬P" to "4, 6, Conj", "¬R" to "IP"),
+            ),
+        ),
+    )
+
+    private val ipInsideCp = LessonDef(
+        "ip-5", "Mixing assumption types", "An indirect proof inside a conditional proof.", listOf(ACP, AIP, CP, IP),
+        listOf(
+            Read(
+                "Combining methods",
+                listOf(
+                    "To prove P → ¬Q, assume P (ACP). Inside, you need ¬Q, and you can prove that indirectly: assume Q (AIP) and find a contradiction.",
+                    "Close the inner assumption with IP, then the outer one with CP.",
+                ),
+            ),
+            Guided(
+                "Two methods at once", listOf("(P ∧ Q) → R", "¬R"), "P → ¬Q", listOf(Conj, MP, ACP, CP, AIP, IP),
+                listOf(
+                    Coach("Choose ACP: it fills in P, the \"if\" part of the goal.") { it.hasAssumed("P", ACP) },
+                    Coach("Inside, the goal is ¬Q. Choose AIP: it fills in Q, the opposite.") { it.hasAssumed("Q", AIP) },
+                    Coach("Join lines 3 and 4 with Conj, then use MP with line 1.") { it.has("R") },
+                    Coach("R contradicts line 2. Join them with Conj.") { it.has("R ∧ ¬R") || it.has("¬R ∧ R") },
+                    Coach("Close the inner assumption: IP fills in ¬Q.") { it.has("¬Q") },
+                    Coach("Close the outer assumption: CP fills in P → ¬Q.") { it.done },
+                ),
+                "Done. IP closed the inner assumption, then CP closed the outer one.",
+                solution = listOf(
+                    "P" to "ACP", "Q" to "AIP", "P ∧ Q" to "3, 4, Conj", "R" to "1, 5, MP", "R ∧ ¬R" to "6, 2, Conj", "¬Q" to "IP", "P → ¬Q" to "CP",
+                ),
+            ),
+            Quiz(
+                "Check", "ACP on line 3 and AIP on line 4 are both open. What do you close first?",
+                listOf("The AIP on line 4, with IP", "The ACP on line 3, with CP"), 0,
+                "The most recent assumption closes first, so the indirect proof inside finishes before the conditional proof around it.",
+            ),
         ),
     )
 
@@ -503,12 +666,12 @@ object Curriculum {
         Course(
             "cp", "Conditional Proof", "ACP · CP", "Prove an if-then by assuming its first half.",
             Spec(ALL + listOf(ACP, CP), emptyList(), 2..4, 4..9, 5, 0.2, 9, 0.1, mapOf(ATOM to 2.0, NEG to 1.0, OR to 1.0, AND to 1.0), Method.CONDITIONAL),
-            listOf(cpLesson, cpPractice), advanced = true,
+            listOf(cpLesson, cpPractice, cpNested, cpBiconditional, cpTheorems), advanced = true,
         ),
         Course(
             "ip", "Indirect Proof", "AIP · IP", "Prove something by showing its opposite is impossible.",
             Spec(ALL + listOf(ACP, CP, AIP, IP), emptyList(), 2..4, 5..10, 5, 0.2, 9, 0.1, mapOf(ATOM to 1.0), Method.INDIRECT),
-            listOf(ipLesson, ipPractice), advanced = true,
+            listOf(ipLesson, ipPractice, ipPositive, ipDisguise, ipInsideCp), advanced = true,
         ),
     )
 

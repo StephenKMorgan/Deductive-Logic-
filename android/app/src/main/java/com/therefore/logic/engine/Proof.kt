@@ -51,8 +51,63 @@ object Proofs {
         return Scopes(out, stack)
     }
 
-    private fun Formula.isContradiction() =
+    fun Formula.isContradiction() =
         this is Formula.Bin && op == Op.AND && (b == not(a) || a == not(b))
+
+    /**
+     * Lines that clash: a line X ∧ ¬X, or two citable lines X and ¬X. Only lines the player can still
+     * cite count, so a contradiction inside a closed subproof doesn't light up.
+     */
+    fun contradictions(lines: List<ProofLine>): Map<Int, Int?> {
+        val sc = scopes(lines)
+        val at = HashMap<Formula, Int>()
+        lines.forEachIndexed { i, l -> if (sc.available(i + 1)) at.putIfAbsent(l.formula, i + 1) }
+        val out = LinkedHashMap<Int, Int?>()
+        for ((f, n) in at) {
+            if (f.isContradiction()) out[n] = null
+            at[not(f)]?.let { m -> out[n] = m; out[m] = n }
+        }
+        return out
+    }
+
+    /**
+     * What the player is working toward at this point: the conclusion, or inside a Conditional Proof
+     * the "then" part of the conditional being proved. Null inside an Indirect Proof (the aim there is
+     * a contradiction) or when the assumptions don't follow the goal.
+     */
+    fun currentGoal(conclusion: Formula, lines: List<ProofLine>): Formula? {
+        var goal: Formula = conclusion
+        for (n in scopes(lines).open) {
+            val l = lines[n - 1]
+            val g = goal as? Formula.Bin
+            goal = if (l.rule == Rule.ACP && g != null && g.op == Op.IMP && g.a == l.formula) g.b else return null
+        }
+        return goal
+    }
+
+    /** The line an assumption rule most likely wants, so the board can fill it in (the player can still edit it). */
+    fun suggestion(conclusion: Formula, lines: List<ProofLine>, rule: Rule): Pair<Formula, String>? {
+        val sc = scopes(lines)
+        val innermost = sc.open.lastOrNull()?.let { lines[it - 1] }
+        return when (rule) {
+            Rule.ACP -> (currentGoal(conclusion, lines) as? Formula.Bin)?.takeIf { it.op == Op.IMP }?.let {
+                it.a to "Filled in ${it.a}, the \"if\" part of ${it}. You can edit it."
+            }
+            Rule.AIP -> currentGoal(conclusion, lines)?.let { g ->
+                val opposite = if (g is Formula.Not) g.a else not(g)
+                opposite to "Filled in $opposite, the opposite of $g, which you're trying to prove. You can edit it."
+            }
+            Rule.CP -> innermost?.takeIf { it.rule == Rule.ACP && lines.last() !== it }?.let { a ->
+                val r = imp(a.formula, lines.last().formula)
+                r to "Filled in $r: the assumption, then the last line. Edit the right side to use another line from the subproof."
+            }
+            Rule.IP -> innermost?.takeIf { it.rule == Rule.AIP }?.let { a ->
+                val r = (a.formula as? Formula.Not)?.a ?: not(a.formula)
+                r to "Filled in $r, the opposite of the assumption."
+            }
+            else -> null
+        }
+    }
 
     /** Checks a new line against the proof so far. On success, `cites` holds the citations to record. */
     fun checkLine(lines: List<ProofLine>, rule: Rule, cites: List<Int>, formula: Formula): LineCheck {
@@ -73,9 +128,11 @@ object Proofs {
                 if (rule == Rule.CP) {
                     val f = formula as? Formula.Bin
                     when {
-                        f != null && f.op == Op.IMP && f.a == asm.formula && f.b in block -> LineCheck(true, cites = range)
+                        // The "then" part may be any line that can still be cited here (inside the subproof or before it).
+                        f != null && f.op == Op.IMP && f.a == asm.formula && (1..lines.size).any { sc.available(it) && lines[it - 1].formula == f.b } ->
+                            LineCheck(true, cites = range)
                         f != null && f.op == Op.IMP && f.a == asm.formula ->
-                            LineCheck(false, "Conditional Proof closes with ${asm.formula} → (a line you derived after the assumption). ${f.b} isn't one of those lines yet.")
+                            LineCheck(false, "Conditional Proof closes with ${asm.formula} → (a line you can cite here). ${f.b} isn't one of those lines yet.")
                         else -> LineCheck(false, "Conditional Proof turns the assumption on line $a into the \"if\" part. The new line must look like ${asm.formula.show(false)} → …")
                     }
                 } else {
@@ -101,12 +158,24 @@ object Proofs {
         val avail = HashMap<Formula, Int>()
         lines.forEachIndexed { i, l -> if (sc.available(i + 1)) avail.putIfAbsent(l.formula, i + 1) }
         val openFormulas = sc.open.map { lines[it - 1].formula }
+        // Pair each model assumption with the step that closes it.
+        val closer = HashMap<Int, Step>()
+        val pending = ArrayList<Int>()
+        puzzle.solution.forEachIndexed { i, st ->
+            when (st.rule.kind) {
+                RuleKind.ASSUMPTION -> pending += i
+                RuleKind.CLOSE -> closer[pending.removeAt(pending.lastIndex)] = st
+                else -> {}
+            }
+        }
+        val closedAlready = { st: Step? -> st != null && lines.any { it.formula == st.formula && it.rule == st.rule } }
         val modelStack = ArrayList<Formula>()
-        for (st in puzzle.solution) {
+        for ((i, st) in puzzle.solution.withIndex()) {
             when (st.rule.kind) {
                 RuleKind.ASSUMPTION -> {
                     modelStack += st.formula
-                    if (st.formula in openFormulas) continue
+                    // Done if it's open now, or if its subproof has already been closed.
+                    if (st.formula in openFormulas || closedAlready(closer[i])) continue
                     return Hint(st, emptyList())
                 }
                 RuleKind.CLOSE -> {

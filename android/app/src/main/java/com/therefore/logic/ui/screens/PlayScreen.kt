@@ -111,7 +111,7 @@ fun PlayScreen(vm: GameViewModel, state: GameState, onBack: () -> Unit) {
                     Column {
                         Text(course.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                         val sub = when (state.mode) {
-                            com.therefore.logic.data.Mode.DAILY -> state.date.orEmpty()
+                            com.therefore.logic.data.Mode.DAILY -> "${state.date} · Par ${state.puzzle.solution.size} lines"
                             com.therefore.logic.data.Mode.FREE -> "Free play · Level ${state.level}" +
                                 (state.lessonId?.let { id -> course.lessons.firstOrNull { it.id == id }?.let { " · ${it.title}" } } ?: "")
                             else -> "Practice · Level ${state.level}"
@@ -149,6 +149,7 @@ fun ProofList(vm: BoardActions, s: GameState, modifier: Modifier, showGoal: Bool
     val p = LocalPalette.current
     val list = rememberLazyListState()
     val scopes = remember(s.lines) { Proofs.scopes(s.lines) }
+    val clashes = remember(s.lines) { Proofs.contradictions(s.lines) }
     LaunchedEffect(s.lines.size) { list.animateScrollToItem(s.lines.size + 1) }
     LazyColumn(modifier, state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
         if (showGoal) item {
@@ -167,7 +168,15 @@ fun ProofList(vm: BoardActions, s: GameState, modifier: Modifier, showGoal: Bool
             val depth = scopes.depth(n)
             val usable = scopes.available(n)
             val selected = n in s.cites
-            val bg by animateColorAsState(if (selected) p.accentSoft else Color.Transparent, label = "cite")
+            val clash = n in clashes
+            val bg by animateColorAsState(
+                when {
+                    selected -> p.accentSoft
+                    clash -> p.badSoft
+                    else -> Color.Transparent
+                },
+                label = "cite",
+            )
             if (i > 0) HorizontalDivider(color = if (i == s.premiseCount) p.ink.copy(alpha = 0.5f) else p.line, thickness = if (i == s.premiseCount) 1.5.dp else 0.5.dp)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
                 // One bar per open assumption, like the indented subproofs in a textbook.
@@ -182,13 +191,13 @@ fun ProofList(vm: BoardActions, s: GameState, modifier: Modifier, showGoal: Bool
                         .background(bg)
                         .then(if (selected) Modifier.border(1.5.dp, p.accent, RoundedCornerShape(8.dp)) else Modifier)
                         .clickable { vm.toggleCite(n) }
-                        .semantics { contentDescription = "Line $n, ${line.formula}. Tap to cite." }
+                        .semantics { contentDescription = "Line $n, ${line.formula}${if (clash) ", contradiction" else ""}. Tap to cite." }
                         .padding(horizontal = 6.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("$n.", Modifier.width(28.dp), style = FormulaStyle, color = p.muted, textAlign = TextAlign.End)
-                    FormulaText(line.formula.show(), Modifier.weight(1f).padding(start = 8.dp))
-                    Text(line.justification, style = FormulaStyle.copy(fontSize = 13.sp), color = p.muted)
+                    FormulaText(line.formula.show(), Modifier.weight(1f).padding(start = 8.dp), color = if (clash) p.bad else Color.Unspecified)
+                    Text(line.justification, style = FormulaStyle.copy(fontSize = 13.sp), color = if (clash) p.bad else p.muted)
                 }
                 AnimatedVisibility(selected) {
                     OutlinedButton(
