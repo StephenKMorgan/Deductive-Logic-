@@ -177,6 +177,14 @@ object Proofs {
                 val u = formula as Formula.Quant
                 val src = lines[cites[0] - 1].formula
                 val variable = (src.terms() + u.v).filter(::isVariable).firstOrNull { u.body.subst(u.v, it) == src } ?: return null
+                // A name from EI is tied to the variables free when it was introduced (as in ∀x∃y Lxy → Lxa):
+                // the variable is then no longer arbitrary.
+                val fromEi = lines.indexOfFirst { it.rule == Rule.EI && variable in it.formula.freeVariables() }
+                if (fromEi >= 0) return LineCheck(
+                    false,
+                    "You can't use UG on $variable here. Line ${fromEi + 1} came from EI while $variable was free, so the name there may depend on $variable. That's how \"everyone loves someone\" would wrongly become \"someone is loved by everyone\".",
+                    Trap.UG_NAME, cites = cites,
+                )
                 val assumption = sc.open.firstOrNull { variable in lines[it - 1].formula.freeVariables() }
                 if (assumption != null) return LineCheck(
                     false, "You can't use UG on $variable here: line $assumption assumed something about $variable, so $variable isn't arbitrary inside this subproof.", Trap.UG_NAME, cites = cites,

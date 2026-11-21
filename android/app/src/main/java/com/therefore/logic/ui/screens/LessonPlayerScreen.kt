@@ -258,12 +258,12 @@ private fun TableStep(vm: LessonViewModel, step: LessonStep.Table, st: StepState
 @Composable
 private fun WorldExplorer(vm: LessonViewModel, step: LessonStep.WorldStep, st: StepState) {
     val p = LocalPalette.current
-    val world = vm.world(st.props)
+    val world = vm.world(st)
     val formulas = step.formulas.map(::f)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Eyebrow("Explore a world")
         LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
-        Panel {
+        if (st.props.isNotEmpty()) Panel {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(56.dp))
@@ -288,7 +288,37 @@ private fun WorldExplorer(vm: LessonViewModel, step: LessonStep.WorldStep, st: S
                 }
             }
         }
-        Text("Tap a square to give a thing that property, or take it away.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+        // Relations: rows are the first thing, columns the second.
+        for ((rel, pairs) in st.rels.toSortedMap()) {
+            Panel {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${rel}xy", Modifier.width(56.dp), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        for (name in listOf("a", "b", "c")) Text(name, Modifier.weight(1f), fontFamily = Mono, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                    for (i in 0..2) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${"abc"[i]}", Modifier.width(56.dp), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        for (j in 0..2) {
+                            val on = (i to j) in pairs
+                            val label = "$rel${"abc"[i]}${"abc"[j]}"
+                            Box(
+                                Modifier.weight(1f).padding(3.dp).height(46.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (on) p.accent else p.sunk)
+                                    .border(1.5.dp, if (on) p.accent else p.line, RoundedCornerShape(10.dp))
+                                    .clickable { vm.toggleRelation(rel, i, j) }
+                                    .semantics { contentDescription = "$label is ${if (on) "on" else "off"}. Tap to change." },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(label, fontFamily = Mono, color = if (on) p.onAccent else p.muted, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
+                        }
+                    }
+                }
+            }
+        }
+        Text(
+            if (st.rels.isNotEmpty()) "Each square says whether the row thing relates to the column thing (Lab: a to b). Tap to switch it."
+            else "Tap a square to give a thing that property, or take it away.",
+            style = MaterialTheme.typography.bodySmall, color = p.muted,
+        )
         Panel {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 formulas.forEachIndexed { i, fm ->

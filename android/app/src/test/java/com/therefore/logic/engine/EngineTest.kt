@@ -282,7 +282,7 @@ class EngineTest {
     }
 
     @Test fun predicatePuzzlesForEveryCourseAndLevel() {
-        for (c in Curriculum.predicateCourses) for (level in 1..5) for (seed in 1..15) {
+        for (c in Curriculum.predicateCourses + Curriculum.dailyPredicate) for (level in 1..5) for (seed in 1..15) {
             val puzzle = Generator.generate(c.spec, level, seed * 131L + level)
             assertTrue("${c.id} uses quantifiers", (puzzle.premises + puzzle.conclusion).any { it.isPredicateLogic })
             val lines = ArrayList<ProofLine>()
@@ -302,6 +302,8 @@ class EngineTest {
         assertTrue(Rule.UI in used.getValue("pred-quant"))
         assertTrue(Rule.UG in used.getValue("pred-allsome") && Rule.EI in used.getValue("pred-allsome") && Rule.EG in used.getValue("pred-allsome"))
         assertTrue(Rule.QN in used.getValue("pred-qn"))
+        assertTrue(Rule.CP in used.getValue("pred-assume") && Rule.UG in used.getValue("pred-assume"))
+        assertTrue(Rule.UI in used.getValue("pred-rel"))
     }
 
     @Test fun worldsEvaluateQuantifiers() {
@@ -312,6 +314,36 @@ class EngineTest {
         assertTrue(p("Fa & Ga").eval(w))
         assertTrue(satisfiable(listOf(p("∃x Fx"), p("∃x ~Fx"))))
         assertFalse(satisfiable(listOf(p("∀x Fx"), p("∃x ~Fx"))))
+    }
+
+    @Test fun relationsAndQuantifierOrder() {
+        assertEquals("∀x∃y Lxy", p("∀x∃y Lxy").show())
+        assertEquals(p("Lab"), p("Lxy").subst('x', 'a').subst('y', 'b'))
+        val w = World(3, emptyMap(), mapOf('a' to 0, 'b' to 1, 'c' to 2), rels = mapOf('L' to setOf(0 to 1, 1 to 2, 2 to 0)))
+        assertTrue(p("Lab").eval(w)); assertFalse(p("Lba").eval(w))
+        assertTrue(p("∀x∃y Lxy").eval(w)); assertFalse(p("∃y∀x Lxy").eval(w))
+        // ∀x∃y Lxy does not imply ∃y∀x Lxy: there's a world with the premise true and the conclusion false.
+        assertTrue(satisfiable(listOf(p("∀x∃y Lxy"), p("¬∃y∀x Lxy"))))
+        // ...and the fake proof is blocked at UG.
+        val lines = listOf(ProofLine(p("∀x∃y Lxy"), null), ProofLine(p("∃y Lxy"), Rule.UI, listOf(1)), ProofLine(p("Lxa"), Rule.EI, listOf(2)))
+        assertTrue(Proofs.checkLine(lines.take(2), Rule.EI, listOf(2), p("Lxa")).ok)
+        val ug = Proofs.checkLine(lines, Rule.UG, listOf(3), p("∀x Lxa"))
+        assertFalse(ug.ok)
+        assertTrue(ug.message.contains("EI"))
+    }
+
+    @Test fun streakCountsEitherDailyProof() {
+        fun attempt(course: String, date: String) = com.therefore.logic.data.Attempt(
+            courseId = course, level = 3, date = date, grade = "A", stars = 3, score = 95, lines = 4, modelLines = 4,
+            mistakes = 0, hints = 0, seconds = 60, revealed = false, finishedAt = 0, mode = "DAILY",
+        )
+        val today = java.time.LocalDate.of(2026, 11, 21)
+        val prog = com.therefore.logic.data.ProgressRepository.compute(
+            listOf(attempt("daily", "2026-11-19"), attempt("daily-pred", "2026-11-20"), attempt("daily", "2026-11-21"), attempt("daily-pred", "2026-11-21")), today,
+        )
+        assertEquals(3, prog.streak)
+        assertEquals(setOf("2026-11-20", "2026-11-21"), prog.predicateDays.keys)
+        assertTrue(prog.courses.isEmpty())   // daily proofs don't count as course practice
     }
 
     @Test fun dailyPuzzleIsTheSameForTheSameSeed() {

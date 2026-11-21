@@ -54,7 +54,7 @@ interface AttemptDao {
     @Query("SELECT * FROM attempts ORDER BY finishedAt")
     fun all(): Flow<List<Attempt>>
 
-    @Query("SELECT COUNT(*) FROM attempts WHERE courseId = 'daily' AND date = :date")
+    @Query("SELECT COUNT(*) FROM attempts WHERE courseId IN ('daily', 'daily-pred') AND date = :date AND revealed = 0")
     suspend fun dailyCount(date: String): Int
 
     @Query("DELETE FROM attempts")

@@ -10,6 +10,7 @@ import com.therefore.logic.content.LessonStep
 import com.therefore.logic.content.TableGoal
 import com.therefore.logic.content.WorldGoal
 import com.therefore.logic.engine.World
+import com.therefore.logic.engine.arities
 import com.therefore.logic.content.f
 import com.therefore.logic.content.puzzle
 import com.therefore.logic.data.GameState
@@ -35,6 +36,8 @@ data class StepState(
     val found: Boolean = false,
     /** World explorer: which things (0, 1, 2) have each property, and the worlds tried so far. */
     val props: Map<Char, Set<Int>> = emptyMap(),
+    /** Two-place relations: the ordered pairs (row thing, column thing) that are on. */
+    val rels: Map<Char, Set<Pair<Int, Int>>> = emptyMap(),
     val worldsSeen: Set<String> = emptySet(),
     /** Guided / practice proofs. */
     val board: GameState? = null,
@@ -73,9 +76,10 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             StepState(values = values, visited = setOf(mask(values))).let { evaluateTable(step, it) }
         }
         is LessonStep.WorldStep -> {
-            val preds = step.formulas.flatMap { f(it).predicates() }.distinct().sorted()
-            val props = preds.associateWith { emptySet<Int>() }
-            evaluateWorld(step, StepState(props = props, worldsSeen = setOf(worldKey(props))))
+            val arity = sortedMapOf<Char, Int>().also { m -> step.formulas.forEach { f(it).arities(m) } }
+            val props = arity.filterValues { it == 1 }.keys.associateWith { emptySet<Int>() }
+            val rels = arity.filterValues { it == 2 }.keys.associateWith { emptySet<Pair<Int, Int>>() }
+            evaluateWorld(step, StepState(props = props, rels = rels, worldsSeen = setOf(worldKey(props, rels))))
         }
         is LessonStep.Guided -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
         is LessonStep.Practice -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
@@ -95,14 +99,16 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         return st.copy(found = found, complete = found)
     }
 
-    private fun worldKey(props: Map<Char, Set<Int>>) = props.toSortedMap().entries.joinToString("|") { (k, v) -> "$k${v.sorted()}" }
+    private fun worldKey(props: Map<Char, Set<Int>>, rels: Map<Char, Set<Pair<Int, Int>>>) =
+        props.toSortedMap().entries.joinToString("|") { (k, v) -> "$k${v.sorted()}" } + "#" +
+            rels.toSortedMap().entries.joinToString("|") { (k, v) -> "$k${v.sortedBy { it.first * 3 + it.second }}" }
 
-    fun world(props: Map<Char, Set<Int>>) = World(3, props, mapOf('a' to 0, 'b' to 1, 'c' to 2))
+    fun world(st: StepState) = World(3, st.props, mapOf('a' to 0, 'b' to 1, 'c' to 2), rels = st.rels)
 
     private fun evaluateWorld(step: LessonStep.WorldStep, st: StepState): StepState {
-        val w = world(st.props)
+        val w = world(st)
         val v = step.formulas.map { f(it).eval(w) }
-        val worlds = 1 shl (3 * st.props.size)
+        val worlds = 1 shl minOf(20, 3 * st.props.size + 9 * st.rels.size)
         val hit = when (step.goal) {
             WorldGoal.ALL_TRUE -> v.all { it }
             WorldGoal.FALSE -> !v[0]
@@ -119,7 +125,19 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         val cur = s.step.props[p] ?: emptySet()
         val props = s.step.props + (p to if (thing in cur) cur - thing else cur + thing)
         c.haptics.key()
-        val st = evaluateWorld(step, s.step.copy(props = props, worldsSeen = s.step.worldsSeen + worldKey(props)))
+        val st = evaluateWorld(step, s.step.copy(props = props, worldsSeen = s.step.worldsSeen + worldKey(props, s.step.rels)))
+        if (st.found && !s.step.found) c.haptics.solved()
+        _state.value = s.copy(step = st)
+    }
+
+    /** Turns relation [r] from thing [i] to thing [j] on or off. */
+    fun toggleRelation(r: Char, i: Int, j: Int) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.WorldStep ?: return
+        val cur = s.step.rels[r] ?: emptySet()
+        val rels = s.step.rels + (r to if ((i to j) in cur) cur - (i to j) else cur + (i to j))
+        c.haptics.key()
+        val st = evaluateWorld(step, s.step.copy(rels = rels, worldsSeen = s.step.worldsSeen + worldKey(s.step.props, rels)))
         if (st.found && !s.step.found) c.haptics.solved()
         _state.value = s.copy(step = st)
     }

@@ -86,6 +86,7 @@ import com.therefore.logic.engine.RuleKind
 import com.therefore.logic.ui.GameViewModel
 import com.therefore.logic.game.BoardActions
 import com.therefore.logic.engine.Proofs
+import com.therefore.logic.engine.isVariable
 import com.therefore.logic.ui.components.CardShape
 import com.therefore.logic.ui.components.Eyebrow
 import com.therefore.logic.ui.components.FormulaText
@@ -397,6 +398,8 @@ private sealed interface KeySpec {
     data class Sym(val t: Char, val label: String) : KeySpec
     data class Fn(val label: String, val desc: String, val action: (BoardActions) -> Unit, val enabled: Boolean = true) : KeySpec
     data object AddLine : KeySpec
+    /** An empty cell that pads out a row. */
+    data object Blank : KeySpec
 }
 
 @Composable
@@ -410,10 +413,10 @@ private fun Keypad(vm: BoardActions, s: GameState) {
             // Predicate letters, then the variable x, the names in use plus the next new one (for EI), then ∀ ∃.
             val all = s.puzzle.premises + s.puzzle.conclusion + s.lines.map { it.formula }
             all.flatMap { it.predicates() }.distinct().sorted().forEach { add(KeySpec.Sym(it, "predicate $it")) }
-            add(KeySpec.Sym('x', "variable x"))
+            all.flatMap { it.terms() }.filter(::isVariable).plus('x').distinct().sorted().forEach { add(KeySpec.Sym(it, "variable $it")) }
             val names = all.flatMap { it.names() }.toSortedSet()
             val next = ('a'..'w').first { it != 'v' && it !in names }
-            (names + next).take(3).forEach { add(KeySpec.Sym(it, "name $it")) }
+            (names.take(3) + next).sorted().forEach { add(KeySpec.Sym(it, "name $it")) }
             add(KeySpec.Sym('∀', "for all"))
             add(KeySpec.Sym('∃', "there exists"))
         } else "PQRSTU".take(count).forEach { add(KeySpec.Sym(it, it.toString())) }
@@ -428,6 +431,10 @@ private fun Keypad(vm: BoardActions, s: GameState) {
     val rows = ArrayList<List<Pair<KeySpec, Int>>>()
     var row = ArrayList<Pair<KeySpec, Int>>()
     for (k in keys) {
+        // "Add line" needs room: if fewer than three cells are left, pad the row and give it its own.
+        if (k is KeySpec.AddLine && 7 - row.size < 3 && row.isNotEmpty()) {
+            row.add(KeySpec.Blank to (7 - row.size)); rows += row; row = ArrayList()
+        }
         val span = if (k is KeySpec.AddLine) 7 - row.size else 1
         row.add(k to span)
         if (row.sumOf { it.second } == 7) { rows += row; row = ArrayList() }
@@ -435,7 +442,9 @@ private fun Keypad(vm: BoardActions, s: GameState) {
     if (row.isNotEmpty()) rows += row
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         for (r in rows) Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            for ((k, span) in r) Key(vm, k, Modifier.weight(span.toFloat()))
+            for ((k, span) in r) {
+                if (k is KeySpec.Blank) Spacer(Modifier.weight(span.toFloat())) else Key(vm, k, Modifier.weight(span.toFloat()))
+            }
         }
     }
 }
@@ -449,6 +458,7 @@ private fun Key(vm: BoardActions, k: KeySpec, modifier: Modifier) {
         is KeySpec.Sym -> Quad(k.t.toString().inNotation(plain), k.label, true, false)
         is KeySpec.Fn -> Quad(k.label, k.desc, k.enabled, false)
         KeySpec.AddLine -> Quad("Add line", "Add line", true, true)
+        KeySpec.Blank -> Quad("", "", false, false)
     }
     val isOp = k is KeySpec.Sym && k.t in "¬∧∨→↔∀∃"
     Box(
@@ -462,6 +472,7 @@ private fun Key(vm: BoardActions, k: KeySpec, modifier: Modifier) {
                     is KeySpec.Sym -> vm.key(k.t)
                     is KeySpec.Fn -> k.action(vm)
                     KeySpec.AddLine -> vm.addLine()
+                    KeySpec.Blank -> {}
                 }
             }
             .semantics { contentDescription = desc }

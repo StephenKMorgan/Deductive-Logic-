@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -90,6 +91,8 @@ fun HomeScreen(
     val p = LocalPalette.current
     val today = LocalDate.now().toString()
     val day = progress.days[today]
+    val predDay = progress.predicateDays[today]
+    val solvedToday = listOfNotNull(day, predDay).count { !it.studied }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             BrandHeader("∴", "Therefore", "Deductive logic proofs, one line at a time") {
@@ -109,14 +112,14 @@ fun HomeScreen(
                 }
                 CardRow(onDaily) {
                     Column(Modifier.weight(1f)) {
-                        Eyebrow("Daily proof · $today")
+                        Eyebrow("Daily proofs · $today")
                         Text(
-                            when { day == null -> "A new proof is ready"; day.studied -> "Studied today"; else -> "Solved · grade ${day.grade}" },
+                            when (solvedToday) { 0 -> "Two new proofs are ready"; 1 -> "1 of 2 solved today"; else -> "Both solved today" },
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text("${progress.streak} day streak", style = MaterialTheme.typography.bodySmall, color = p.muted)
                     }
-                    Text(if (day == null) "Start →" else "View →", color = p.accent, fontWeight = FontWeight.SemiBold)
+                    Text(if (solvedToday == 2) "View →" else "Start →", color = p.accent, fontWeight = FontWeight.SemiBold)
                 }
                 SectionTitle("Courses")
                 Text(
@@ -195,53 +198,92 @@ fun PredicateScreen(progress: Progress, onCourse: (String) -> Unit) {
 }
 
 @Composable
-fun DailyScreen(progress: Progress, inProgress: Boolean, onStart: () -> Unit) {
+fun DailyScreen(progress: Progress, inProgress: (String) -> Boolean, onStart: (String) -> Unit) {
     val p = LocalPalette.current
     val today = LocalDate.now()
-    val result = progress.days[today.toString()]
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            BrandHeader("◷", "Daily Proof", "${today.dayOfWeek.getDisplayName(DateStyle.FULL, Locale.getDefault())}, ${today.month.getDisplayName(DateStyle.FULL, Locale.getDefault())} ${today.dayOfMonth}")
+            BrandHeader("◷", "Daily Proofs", "${today.dayOfWeek.getDisplayName(DateStyle.FULL, Locale.getDefault())}, ${today.month.getDisplayName(DateStyle.FULL, Locale.getDefault())} ${today.dayOfMonth}")
         }
         item {
-            Panel(Modifier.padding(16.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Eyebrow("Everyone gets the same proof today")
+            Panel(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Eyebrow("Everyone gets the same proofs today")
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text("${progress.streak}", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = p.accent)
                         Text(" day streak", Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.titleMedium)
                         if (progress.bestStreak > progress.streak)
                             Text("  · best ${progress.bestStreak}", Modifier.padding(bottom = 7.dp), color = p.muted)
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        for (i in 6 downTo 0) {
-                            val d = today.minusDays(i.toLong())
-                            val r = progress.days[d.toString()]
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(d.dayOfWeek.getDisplayName(DateStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                                val solved = r != null && !r.studied
-                                Box(
-                                    Modifier.size(34.dp).clip(CircleShape)
-                                        .background(if (solved) p.accent else if (r != null) p.sunk else Color.Transparent)
-                                        .border(1.5.dp, if (i == 0) p.accent else if (r == null) p.line else Color.Transparent, CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) { Text(r?.grade ?: "", fontWeight = FontWeight.Bold, color = if (solved) p.onAccent else p.muted) }
-                            }
-                        }
-                    }
-                    Text(
-                        when {
-                            result == null -> "A mixed puzzle that can use any of the 18 rules. Beat par (fewer lines than the model proof) with no mistakes or hints for a rare S rank."
-                            result.studied -> "You studied today's solution. A new proof arrives tomorrow."
-                            result.grade == "S" -> "S rank today: a perfect proof. Come back tomorrow for a new one."
-                            else -> "You solved today's proof with grade ${result.grade}. Replay it for an S rank: no mistakes, no hints, and fewer lines than par. Your best grade is kept."
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Button(onClick = onStart, Modifier.fillMaxWidth()) {
-                        Text(if (inProgress) "Resume" else if (result != null) "Replay today's proof" else "Start today's proof")
-                    }
+                    Text("Solve either daily proof to keep your streak going.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    WeekRow(today, null, progress.days, "∴")
+                    WeekRow(today, null, progress.predicateDays, "∀")
                 }
+            }
+        }
+        item {
+            DailyCard(
+                "Daily proof", "A mixed puzzle that can use any of the 18 rules.",
+                progress.days[today.toString()], inProgress(Curriculum.DAILY_ID),
+            ) { onStart(Curriculum.DAILY_ID) }
+        }
+        item {
+            DailyCard(
+                "Daily predicate proof", "A puzzle with ∀ and ∃, using the quantifier rules.",
+                progress.predicateDays[today.toString()], inProgress(Curriculum.DAILY_PRED_ID),
+            ) { onStart(Curriculum.DAILY_PRED_ID) }
+        }
+    }
+}
+
+/** One week of daily results; [mark] says which daily it is. */
+@Composable
+private fun WeekRow(today: LocalDate, label: String?, days: Map<String, com.therefore.logic.data.DayResult>, mark: String) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(mark, Modifier.width(26.dp), fontFamily = Mono, fontWeight = FontWeight.Bold, color = p.muted)
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween) {
+            for (i in 6 downTo 0) {
+                val d = today.minusDays(i.toLong())
+                val r = days[d.toString()]
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (mark == "∴") Text(d.dayOfWeek.getDisplayName(DateStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    val solved = r != null && !r.studied
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape)
+                            .background(if (r?.grade == "S") p.star else if (solved) p.accent else if (r != null) p.sunk else Color.Transparent)
+                            .border(1.5.dp, if (i == 0) p.accent else if (r == null) p.line else Color.Transparent, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(r?.grade ?: "", fontWeight = FontWeight.Bold, color = if (solved) p.onAccent else p.muted) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyCard(title: String, about: String, result: com.therefore.logic.data.DayResult?, inProgress: Boolean, onStart: () -> Unit) {
+    val p = LocalPalette.current
+    Panel(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(about, style = MaterialTheme.typography.bodySmall, color = p.muted)
+                }
+                if (result != null) GradeBadge(result.grade)
+            }
+            Text(
+                when {
+                    result == null -> "Beat par (fewer lines than the model proof) with no mistakes or hints for a rare S rank."
+                    result.studied -> "You studied today's solution. A new one arrives tomorrow."
+                    result.grade == "S" -> "S rank today: a perfect proof."
+                    else -> "Solved with grade ${result.grade}. Replay it to try for S; your best grade is kept."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(onClick = onStart, Modifier.fillMaxWidth()) {
+                Text(if (inProgress) "Resume" else if (result != null) "Replay" else "Start")
             }
         }
     }

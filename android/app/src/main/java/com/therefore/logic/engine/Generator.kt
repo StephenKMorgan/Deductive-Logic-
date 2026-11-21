@@ -14,8 +14,9 @@ enum class Method { DIRECT, CONDITIONAL, INDIRECT }
  * Ways to turn a propositional puzzle into a predicate-logic one.
  * INSTANCE: "all F are G, a is F, so a is G". UNIVERSAL: all-to-all, ends with UG.
  * EXISTENTIAL: one "some" premise, EI then EG. NEGATION: a premise written with ¬∃ / ¬∀, needs QN.
+ * CONDITIONAL: one "all" premise becomes the if-part of the conclusion (∀x Fx → ∀x Gx), proved by CP.
  */
-enum class Lift { INSTANCE, UNIVERSAL, EXISTENTIAL, NEGATION }
+enum class Lift { INSTANCE, UNIVERSAL, EXISTENTIAL, NEGATION, CONDITIONAL }
 
 /** How a course generates puzzles. */
 data class Spec(
@@ -34,6 +35,8 @@ data class Spec(
     val method: Method = Method.DIRECT,
     /** Non-empty for predicate-logic courses: how puzzles are lifted into quantified form. */
     val lift: Set<Lift> = emptySet(),
+    /** Predicate-logic puzzles about two-place relations, built from argument patterns. */
+    val relational: Boolean = false,
 )
 
 @Serializable
@@ -320,6 +323,7 @@ object Generator {
             Lift.EXISTENTIAL -> universalOrExistential(base, rng, existential = true)
             // Either kind, with one premise disguised as "nothing is…".
             Lift.NEGATION -> negateOnePremise(universalOrExistential(base, rng, existential = rng.nextBoolean()), rng) ?: return null
+            Lift.CONDITIONAL -> conditional(base, rng) ?: return null
         }
         if (!satisfiable(puzzle.premises)) return null
         if (puzzle.conclusion in puzzle.premises) return null
@@ -347,6 +351,77 @@ object Generator {
         return Puzzle(premises, conclusion, listOf(ei) + ui + base.solution.map { it.lifted(a) } + Step(conclusion, Rule.EG, listOf(c)))
     }
 
+    /** Moves one premise into the conclusion: from the rest, prove ∀x p(x) → ∀x c(x) by Conditional Proof. */
+    private fun conditional(base: Puzzle, rng: Random): Puzzle? {
+        if (base.premises.size < 2) return null
+        val x = 'x'
+        val k = rng.nextInt(base.premises.size)
+        val moved = all(x, base.premises[k].lifted(x))
+        val rest = base.premises.filterIndexed { i, _ -> i != k }
+        val c = base.conclusion.lifted(x)
+        val conclusion = imp(moved, all(x, c))
+        val steps = listOf(Step(moved, Rule.ACP, emptyList()), Step(base.premises[k].lifted(x), Rule.UI, listOf(moved))) +
+            rest.map { Step(it.lifted(x), Rule.UI, listOf(all(x, it.lifted(x)))) } +
+            base.solution.map { it.lifted(x) } +
+            Step(all(x, c), Rule.UG, listOf(c)) + Step(conclusion, Rule.CP, emptyList())
+        return Puzzle(rest.map { all(x, it.lifted(x)) }, conclusion, steps)
+    }
+
+    // ---------------- Relations (two-place predicates) ----------------
+
+    /** An argument pattern: premises, conclusion, and its proof as (line, justification) pairs. */
+    private class Pattern(val minLevel: Int, val premises: List<String>, val conclusion: String, val proof: List<Pair<String, String>>)
+
+    private val PATTERNS = listOf(
+        // Symmetry
+        Pattern(1, listOf("∀x∀y(Lxy → Lyx)", "Lab"), "Lba", listOf("∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "3, UI", "Lba" to "4, 2, MP")),
+        // Relation implies a property
+        Pattern(1, listOf("∀x∀y(Lxy → Fx)", "Lab"), "Fa", listOf("∀y(Lay → Fa)" to "1, UI", "Lab → Fa" to "3, UI", "Fa" to "4, 2, MP")),
+        // Everyone F relates to everything
+        Pattern(1, listOf("∀x(Fx → ∀y Lxy)", "Fa"), "Lab", listOf("Fa → ∀y Lay" to "1, UI", "∀y Lay" to "3, 2, MP", "Lab" to "4, UI")),
+        Pattern(2, listOf("∀x(Fx → ∃y Lxy)", "Fa"), "∃y Lay", listOf("Fa → ∃y Lay" to "1, UI", "∃y Lay" to "3, 2, MP")),
+        // F things relate to G things
+        Pattern(2, listOf("∀x(Fx → ∀y(Gy → Lxy))", "Fa", "Gb"), "Lab",
+            listOf("Fa → ∀y(Gy → Lay)" to "1, UI", "∀y(Gy → Lay)" to "4, 2, MP", "Gb → Lab" to "5, UI", "Lab" to "6, 3, MP")),
+        // Transitivity
+        Pattern(3, listOf("∀x∀y∀z((Lxy ∧ Lyz) → Lxz)", "Lab", "Lbc"), "Lac",
+            listOf("∀y∀z((Lay ∧ Lyz) → Laz)" to "1, UI", "∀z((Lab ∧ Lbz) → Laz)" to "4, UI", "(Lab ∧ Lbc) → Lac" to "5, UI", "Lab ∧ Lbc" to "2, 3, Conj", "Lac" to "6, 7, MP")),
+        // Symmetry with "some"
+        Pattern(3, listOf("∀x∀y(Lxy → Lyx)", "∃y Lay"), "∃y Lya",
+            listOf("Lab" to "2, EI", "∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "4, UI", "Lba" to "5, 3, MP", "∃y Lya" to "6, EG")),
+        // Quantifier order: the valid direction
+        Pattern(3, listOf("∃x∀y Lxy"), "∀y∃x Lxy", listOf("∀y Lay" to "1, EI", "Lay" to "2, UI", "∃x Lxy" to "3, EG", "∀y∃x Lxy" to "4, UG")),
+        // Asymmetric relations are irreflexive
+        Pattern(4, listOf("∀x∀y(Lxy → ¬Lyx)"), "¬Laa", listOf("∀y(Lay → ¬Lya)" to "1, UI", "Laa → ¬Laa" to "2, UI", "¬Laa ∨ ¬Laa" to "3, Impl", "¬Laa" to "4, Taut")),
+        // Everyone relates to someone F, a relates to nothing: so a isn't... (MT with quantified line)
+        Pattern(4, listOf("∀x(Fx → ∃y Lxy)", "¬∃y Lay"), "¬Fa", listOf("Fa → ∃y Lay" to "1, UI", "¬Fa" to "3, 2, MT")),
+        Pattern(5, listOf("∀x∀y(Lxy → Lyx)", "∀x(∃y Lxy → Fx)", "Lab"), "Fb",
+            listOf("∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "4, UI", "Lba" to "5, 3, MP", "∃y Lby" to "6, EG", "∃y Lby → Fb" to "2, UI", "Fb" to "8, 7, MP")),
+    )
+
+    /** Builds a relational puzzle from a pattern, with the letters and names shuffled. */
+    private fun attemptRelational(spec: Spec, rng: Random, level: Int): Puzzle? {
+        val options = PATTERNS.filter { it.minLevel <= level && it.minLevel >= level - 2 }.ifEmpty { PATTERNS }
+        val pat = options[rng.nextInt(options.size)]
+        val rel = "LRK"[rng.nextInt(3)]
+        val props = "FGH".toList().shuffled(rng)
+        val names = "abc".toList().shuffled(rng)
+        fun map(t: String) = t.map { ch ->
+            when (ch) { 'L' -> rel; 'F' -> props[0]; 'G' -> props[1]; 'a' -> names[0]; 'b' -> names[1]; 'c' -> names[2]; else -> ch }
+        }.joinToString("")
+        val premises = pat.premises.map { Parser.parseOrNull(map(it)) ?: return null }
+        val conclusion = Parser.parseOrNull(map(pat.conclusion)) ?: return null
+        val lines = premises.toMutableList()
+        val steps = pat.proof.map { (fs, just) ->
+            val parts = just.split(",").map { it.trim() }
+            val formula = Parser.parseOrNull(map(fs)) ?: return null
+            val step = Step(formula, Rule.valueOf(parts.last()), parts.dropLast(1).map { lines[it.toInt() - 1] })
+            lines += formula
+            step
+        }
+        return Puzzle(premises.shuffled(rng), conclusion, steps).takeIf(::verify)
+    }
+
     /** Rewrites one "all" premise as "nothing is…" (¬∃), so the proof needs QN first. */
     private fun negateOnePremise(p: Puzzle, rng: Random): Puzzle? {
         val candidates = p.premises.withIndex().filter { (it.value as? Formula.Quant)?.q == Quantifier.ALL }
@@ -360,6 +435,10 @@ object Generator {
 
     fun generate(spec: Spec, level: Int, seed: Long): Puzzle {
         val rng = Random(seed)
+        if (spec.relational) {
+            repeat(200) { attemptRelational(spec, rng, level)?.let { return it } }
+            error("No relational pattern verified")
+        }
         if (spec.lift.isNotEmpty()) {
             repeat(3000) { i -> attemptPredicate(spec, rng, if (i < 400) level else 1)?.let { return it } }
             return generate(spec, 1, seed + 7919)

@@ -193,7 +193,7 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
                 Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.isDaily) {
                         Button(onClick = {
-                            val text = "Therefore · Daily proof ${state.date}\nGrade ${r.grade} ${"★".repeat(r.stars)}${"☆".repeat(3 - r.stars)} · " +
+                            val text = "Therefore · ${course.title} ${state.date}\nGrade ${r.grade} ${"★".repeat(r.stars)}${"☆".repeat(3 - r.stars)} · " +
                                 "${r.yourLines} lines (par ${r.modelLines}) · ${state.mistakes.size} mistakes · ${state.hints} hints"
                             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
                             context.startActivity(Intent.createChooser(send, "Share your result"))

@@ -95,7 +95,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             Mode.FREE -> level ?: 1
             else -> c.progress.current().course(courseId).level
         }
-        val seed = if (mode == Mode.DAILY) "therefore-daily-$today".hashCode().toLong() else Random.nextLong()
+        val seed = when {
+            mode != Mode.DAILY -> Random.nextLong()
+            courseId == Curriculum.DAILY_ID -> "therefore-daily-$today".hashCode().toLong()
+            else -> "therefore-$courseId-$today".hashCode().toLong()
+        }
         val spec = course.specFor(lesson)
         val puzzle = withContext(Dispatchers.Default) { Generator.generate(spec, lvl, seed) }
         val s = Session.newGame(courseId, lvl, mode, puzzle, Curriculum.boardRules(course.spec.rules), if (mode == Mode.DAILY) today else null, lessonId)

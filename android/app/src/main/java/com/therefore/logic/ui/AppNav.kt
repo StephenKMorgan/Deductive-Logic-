@@ -84,7 +84,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
     fun play(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null, fresh: Boolean = false) = scope.launch {
         if (fresh || !vm.hasGame(courseId, mode, lessonId, level)) vm.start(courseId, mode, level, lessonId)
         withContext(Dispatchers.Main.immediate) {
-            val back = if (courseId == Curriculum.DAILY_ID) Routes.DAILY else Routes.course(courseId)
+            val back = if (Curriculum.isDaily(courseId)) Routes.DAILY else Routes.course(courseId)
             nav.navigate(Routes.PLAY) { popUpTo(back); launchSingleTop = true }
         }
     }
@@ -118,7 +118,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                 )
             }
             composable(Routes.DAILY) {
-                DailyScreen(progress, vm.hasGame(Curriculum.DAILY_ID, Mode.DAILY)) { play(Curriculum.DAILY_ID, Mode.DAILY) }
+                DailyScreen(progress, inProgress = { id -> vm.hasGame(id, Mode.DAILY) }) { id -> play(id, Mode.DAILY) }
             }
             composable(Routes.RULES) { RulesScreen() }
             composable(Routes.PREDICATE) { PredicateScreen(progress) { nav.navigate(Routes.course(it)) } }

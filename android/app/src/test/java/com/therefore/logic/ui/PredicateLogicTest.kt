@@ -66,7 +66,8 @@ class PredicateLogicTest {
         tap("Quantifiers")
         waitFor("Lessons")
         shot("P2-course")
-        rule.onAllNodesWithText("Start")[0].performClick()
+        rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Start lesson: Talking about things"))
+        tapDesc("Start lesson: Talking about things")
 
         // Two reading steps, then the world explorer.
         waitFor("Looking inside statements"); tap("Continue")
@@ -84,7 +85,8 @@ class PredicateLogicTest {
 
         // Lesson 2: Socrates, typed on the predicate keypad.
         waitFor("Lessons")
-        rule.onAllNodesWithText("Start")[1].performClick()
+        rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Start lesson: Universal Instantiation"))
+        tapDesc("Start lesson: Universal Instantiation")
         waitFor("Dropping ∀"); tap("Continue")
         waitFor("Cite it, choose UI")
         cite(1); tap("UI")

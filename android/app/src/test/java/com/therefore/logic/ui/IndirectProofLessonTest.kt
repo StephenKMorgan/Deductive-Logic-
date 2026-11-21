@@ -64,8 +64,8 @@ class IndirectProofLessonTest {
         tap("Indirect Proof")
         waitFor("Lessons")
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Proving a positive"))
-        // The third lesson's Start button.
-        rule.onAllNodesWithText("Start")[2].performClick()
+        rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Start lesson: Proving a positive"))
+        tapDesc("Start lesson: Proving a positive")
         waitFor("Assume the opposite")
         tap("Continue")
         waitFor("it fills in ¬P")

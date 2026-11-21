@@ -174,8 +174,10 @@ private fun LessonCard(n: Int, lesson: LessonDef, done: Boolean, onStart: () -> 
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onStart, Modifier.weight(1f)) { Text(if (done) "Review" else "Start") }
-            OutlinedButton(onClick = onFreePlay, Modifier.weight(1f)) { Text("Free play") }
+            Button(onClick = onStart, Modifier.weight(1f).semantics { contentDescription = "${if (done) "Review" else "Start"} lesson: ${lesson.title}" }) {
+                Text(if (done) "Review" else "Start")
+            }
+            OutlinedButton(onClick = onFreePlay, Modifier.weight(1f).semantics { contentDescription = "Free play: ${lesson.title}" }) { Text("Free play") }
         }
     }
 }

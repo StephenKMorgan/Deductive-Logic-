@@ -26,17 +26,17 @@ sealed class Formula {
     data class Atom(val v: Char) : Formula() { override fun toString() = show() }
     data class Not(val a: Formula) : Formula() { override fun toString() = show() }
     data class Bin(val op: Op, val a: Formula, val b: Formula) : Formula() { override fun toString() = show() }
-    /** A one-place predicate applied to a term: Fx, Ga. */
-    data class Pred(val p: Char, val term: Char) : Formula() { override fun toString() = show() }
+    /** A predicate applied to its terms: Fx, Ga (one-place) or Lxy, Lab (a relation between two things). */
+    data class Pred(val p: Char, val args: String) : Formula() { override fun toString() = show() }
     /** ∀x B or ∃x B. */
     data class Quant(val q: Quantifier, val v: Char, val body: Formula) : Formula() { override fun toString() = show() }
 
     /** Fully bracketed except at the top level, e.g. `(P ∧ Q) → R`, `∀x(Fx → Gx)`. */
     fun show(top: Boolean = true): String = when (this) {
         is Atom -> v.toString()
-        is Pred -> "$p$term"
+        is Pred -> "$p$args"
         is Not -> "¬" + a.show(false)
-        is Quant -> "${q.symbol}$v" + (if (body is Bin) "" else " ") + body.show(false)
+        is Quant -> "${q.symbol}$v" + (if (body is Bin || body is Quant) "" else " ") + body.show(false)
         is Bin -> {
             val s = "${a.show(false)} ${op.symbol} ${b.show(false)}"
             if (top) s else "($s)"
@@ -79,7 +79,7 @@ sealed class Formula {
     fun terms(into: MutableSet<Char> = sortedSetOf()): Set<Char> {
         when (this) {
             is Atom -> {}
-            is Pred -> into.add(term)
+            is Pred -> args.forEach { into.add(it) }
             is Not -> a.terms(into)
             is Quant -> { into.add(v); body.terms(into) }
             is Bin -> { a.terms(into); b.terms(into) }
@@ -91,7 +91,7 @@ sealed class Formula {
 
     fun freeVariables(): Set<Char> = when (this) {
         is Atom -> emptySet()
-        is Pred -> if (isVariable(term)) setOf(term) else emptySet()
+        is Pred -> args.filter(::isVariable).toSet()
         is Not -> a.freeVariables()
         is Quant -> body.freeVariables() - v
         is Bin -> a.freeVariables() + b.freeVariables()
@@ -100,7 +100,7 @@ sealed class Formula {
     /** Replaces the free occurrences of variable [v] with term [t]. */
     fun subst(v: Char, t: Char): Formula = when (this) {
         is Atom -> this
-        is Pred -> if (term == v) copy(term = t) else this
+        is Pred -> if (v in args) copy(args = args.replace(v, t)) else this
         is Not -> Not(a.subst(v, t))
         is Quant -> if (this.v == v) this else copy(body = body.subst(v, t))
         is Bin -> copy(a = a.subst(v, t), b = b.subst(v, t))
@@ -128,7 +128,9 @@ sealed class Formula {
     /** Truth in a small world: [has] says whether thing i has property p; names point at things. */
     fun eval(world: World, env: Map<Char, Int> = emptyMap()): Boolean = when (this) {
         is Atom -> world.atoms[v] ?: false
-        is Pred -> world.has(p, env[term] ?: world.names[term] ?: 0)
+        is Pred -> args.map { env[it] ?: world.names[it] ?: 0 }.let { things ->
+            if (things.size == 1) world.has(p, things[0]) else world.relates(p, things[0], things[1])
+        }
         is Not -> !a.eval(world, env)
         is Bin -> {
             val x = a.eval(world, env)
@@ -142,25 +144,51 @@ sealed class Formula {
 }
 
 /** A tiny model: [size] things, which properties each has, and which thing each name points at. */
-data class World(val size: Int, val props: Map<Char, Set<Int>>, val names: Map<Char, Int> = emptyMap(), val atoms: Map<Char, Boolean> = emptyMap()) {
+data class World(
+    val size: Int,
+    val props: Map<Char, Set<Int>>,
+    val names: Map<Char, Int> = emptyMap(),
+    val atoms: Map<Char, Boolean> = emptyMap(),
+    /** Two-place relations: the ordered pairs (i, j) for which Rij holds. */
+    val rels: Map<Char, Set<Pair<Int, Int>>> = emptyMap(),
+) {
     fun has(p: Char, thing: Int) = thing in (props[p] ?: emptySet())
+    fun relates(r: Char, i: Int, j: Int) = (i to j) in (rels[r] ?: emptySet())
+}
+
+/** Each predicate letter with its number of places (1 for Fx, 2 for Lxy). */
+fun Formula.arities(into: MutableMap<Char, Int> = sortedMapOf()): Map<Char, Int> {
+    when (this) {
+        is Formula.Atom -> {}
+        is Formula.Pred -> into[p] = args.length
+        is Formula.Not -> a.arities(into)
+        is Formula.Quant -> body.arities(into)
+        is Formula.Bin -> { a.arities(into); b.arities(into) }
+    }
+    return into
 }
 
 /** Whether predicate formulas can all be true together, searching worlds of up to [maxSize] things. */
 fun satisfiableInSomeWorld(fs: List<Formula>, maxSize: Int = 2): Boolean {
-    val preds = fs.flatMap { it.predicates() }.distinct()
+    val arity = HashMap<Char, Int>().also { m -> fs.forEach { it.arities(m) } }
+    val preds = arity.filterValues { it == 1 }.keys.toList()
+    val relations = arity.filterValues { it == 2 }.keys.toList()
     val names = fs.flatMap { it.names() }.distinct()
     for (size in 1..maxSize) {
         val propBits = preds.size * size
-        if (propBits > 12) continue
-        for (m in 0 until (1 shl propBits)) {
+        val relBits = relations.size * size * size
+        if (propBits + relBits > 14) continue
+        for (m in 0 until (1 shl (propBits + relBits))) {
             val props = preds.withIndex().associate { (pi, p) -> p to (0 until size).filter { m and (1 shl (pi * size + it)) != 0 }.toSet() }
+            val rels = relations.withIndex().associate { (ri, r) ->
+                r to (0 until size * size).filter { m and (1 shl (propBits + ri * size * size + it)) != 0 }.map { it / size to it % size }.toSet()
+            }
             var assign = 0
             val total = Math.pow(size.toDouble(), names.size.toDouble()).toInt()
             while (assign < total) {
                 var a = assign
                 val nm = names.associateWith { val t = a % size; a /= size; t }
-                if (fs.all { it.eval(World(size, props, nm)) }) return true
+                if (fs.all { it.eval(World(size, props, nm, rels = rels)) }) return true
                 assign++
             }
         }
@@ -174,7 +202,8 @@ fun and(a: Formula, b: Formula): Formula = Formula.Bin(Op.AND, a, b)
 fun or(a: Formula, b: Formula): Formula = Formula.Bin(Op.OR, a, b)
 fun imp(a: Formula, b: Formula): Formula = Formula.Bin(Op.IMP, a, b)
 fun iff(a: Formula, b: Formula): Formula = Formula.Bin(Op.IFF, a, b)
-fun pred(p: Char, t: Char): Formula = Formula.Pred(p, t)
+fun pred(p: Char, t: Char): Formula = Formula.Pred(p, t.toString())
+fun pred(p: Char, args: String): Formula = Formula.Pred(p, args)
 fun all(v: Char, body: Formula): Formula = Formula.Quant(Quantifier.ALL, v, body)
 fun some(v: Char, body: Formula): Formula = Formula.Quant(Quantifier.SOME, v, body)
 
@@ -272,7 +301,11 @@ object Parser {
                 t in 'A'..'Z' -> {
                     p++
                     val next = toks.getOrNull(p)
-                    if (next != null && isTerm(next)) { p++; pred(t, next) } else atom(t)
+                    // A predicate takes the terms written right after it: Fx, Lab.
+                    val args = StringBuilder()
+                    while (toks.getOrNull(p)?.let(::isTerm) == true) args.append(toks[p++])
+                    if (args.length > 2) throw Fail("$t$args has ${args.length} terms. Predicates here take one (Fx) or two (Lxy).")
+                    if (next != null && args.isNotEmpty()) pred(t, args.toString()) else atom(t)
                 }
                 isTerm(t) -> throw Fail("\"$t\" needs a predicate letter before it, like F$t.")
                 t == ')' -> throw Fail("There is a \")\" with nothing inside or before it.")

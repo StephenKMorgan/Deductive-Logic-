@@ -843,24 +843,229 @@ object Curriculum {
         ),
     )
 
+    private val translateLesson = LessonDef(
+        "pred-7", "Harder translations", "\"No\", \"only\" and \"not all\".", emptyList(),
+        listOf(
+            Read(
+                "Four tricky words",
+                listOf(
+                    "\"No F are G\": ∀x(Fx → ¬Gx). Anything that's F is not G.",
+                    "\"Only F are G\": ∀x(Gx → Fx). It's about the G things: each one must be F. The arrow points the opposite way from \"all F are G\".",
+                    "\"Not all F are G\": ¬∀x(Fx → Gx), which QN turns into ∃x(Fx ∧ ¬Gx): some F isn't G.",
+                ),
+            ),
+            Quiz("Translate", "\"No dogs are cats\" (Dx, Cx)", listOf("∀x(Dx → ¬Cx)", "¬∀x(Dx → Cx)", "∀x(¬Dx → Cx)"), 0, "Anything that's a dog is not a cat. ¬∀x(Dx → Cx) only says that not every dog is a cat."),
+            Quiz("Translate", "\"Only members may vote\" (Mx: x is a member, Vx: x may vote)", listOf("∀x(Vx → Mx)", "∀x(Mx → Vx)", "∃x(Mx ∧ Vx)"), 0, "Anyone who may vote must be a member. ∀x(Mx → Vx) says every member may vote, which is a different claim."),
+            Quiz("Translate", "\"Not every bird can fly\" (Bx, Fx)", listOf("¬∀x(Bx → Fx)", "∀x(Bx → ¬Fx)", "¬∃x(Bx ∧ Fx)"), 0, "The other two both say that no bird can fly."),
+            WorldStep(
+                "Explore", "∀x(Fx → ¬Gx) says no F are G. Make it true while something is F and something is G.",
+                listOf("∀x(Fx → ¬Gx)", "∃x Fx", "∃x Gx"), WorldGoal.ALL_TRUE, success = "The F things and the G things have to be different things.",
+            ),
+        ),
+    )
+
+    private val invalidLesson = LessonDef(
+        "pred-8", "Invalid arguments", "Prove an argument fails by building a counterexample.", emptyList(),
+        listOf(
+            Read(
+                "Counterexamples",
+                listOf(
+                    "A proof shows an argument is valid. To show one is invalid, describe a world where every premise is true and the conclusion is false. That world is a counterexample.",
+                    "If one exists, no proof is possible, however hard you try.",
+                ),
+            ),
+            WorldStep(
+                "All F are G, so all G are F?", "Find a world where the premise is true but the conclusion is false.",
+                listOf("∀x(Fx → Gx)", "∀x(Gx → Fx)"), WorldGoal.COUNTEREXAMPLE, argument = true,
+                success = "Something that's G but not F does it. \"All dogs are animals\" doesn't make every animal a dog.",
+            ),
+            WorldStep(
+                "Affirming the consequent, again", "All F are G, a is G, so a is F? Find a counterexample.",
+                listOf("∀x(Fx → Gx)", "Ga", "Fa"), WorldGoal.COUNTEREXAMPLE, argument = true,
+                success = "a can be G without being F. It's the same trap as in course 1, now with quantifiers.",
+            ),
+            WorldStep(
+                "Some and some", "Some F are G, some G are H, so some F are H? Find a counterexample.",
+                listOf("∃x(Fx ∧ Gx)", "∃x(Gx ∧ Hx)", "∃x(Fx ∧ Hx)"), WorldGoal.COUNTEREXAMPLE, argument = true,
+                success = "The F-and-G thing and the G-and-H thing can be different things.",
+            ),
+            Quiz(
+                "Check", "You couldn't find a counterexample in a three-thing world. Is the argument valid?",
+                listOf("Not necessarily: a counterexample might need more things", "Yes, always"), 0,
+                "Some counterexamples need bigger worlds. To be sure an argument is valid, prove it.",
+            ),
+        ),
+    )
+
+    private val cpQuantLesson = LessonDef(
+        "pred-9", "Conditional proof with quantifiers", "Assume \"everything is F\" and see what follows.", listOf(ACP, CP, UG),
+        listOf(
+            Read(
+                "Assuming a quantified statement",
+                listOf(
+                    "To prove ∀x Fx → ∀x Gx, assume ∀x Fx (ACP), derive ∀x Gx inside, and close with CP.",
+                    "UG still works inside the subproof, as long as the assumption isn't about the variable you generalize. ∀x Fx is fine: its x is bound. An assumption like Fx would block UG on x.",
+                ),
+            ),
+            Guided(
+                "All F to all G", listOf("∀x(Fx → Gx)"), "∀x Fx → ∀x Gx", listOf(UI, MP, UG, ACP, CP),
+                listOf(
+                    Coach("Tap ACP: it fills in ∀x Fx. Add it.") { it.hasAssumed("∀x Fx", ACP) },
+                    Coach("Use UI on line 2 with the variable x: write Fx.") { it.has("Fx") },
+                    Coach("Use UI on line 1 with x as well: Fx → Gx.") { it.has("Fx → Gx") },
+                    Coach("MP gives Gx.") { it.has("Gx") },
+                    Coach("Use UG to write ∀x Gx. It's allowed because the assumption doesn't mention a free x.") { it.has("∀x Gx") },
+                    Coach("Close the subproof with CP.") { it.done },
+                ),
+                "Done. If everything is F, then everything is G.",
+                solution = listOf("∀x Fx" to "ACP", "Fx" to "2, UI", "Fx → Gx" to "1, UI", "Gx" to "4, 3, MP", "∀x Gx" to "5, UG", "∀x Fx → ∀x Gx" to "CP"),
+            ),
+            Quiz("Check", "Inside a subproof that assumed Fx, can you use UG on x?", listOf("No: the assumption is about x, so x isn't arbitrary", "Yes"), 0, "Under the assumption Fx, x is a particular thing that you've supposed is F, not an arbitrary one."),
+            Practice(
+                "Your turn", "Assume ∀x Fx, chain the conditionals at x, and generalize.", listOf("∀x(Fx → Gx)", "∀x(Gx → Hx)"), "∀x Fx → ∀x Hx", listOf(UI, MP, HS, UG, ACP, CP),
+                solution = listOf("∀x Fx" to "ACP", "Fx" to "3, UI", "Fx → Gx" to "1, UI", "Gx → Hx" to "2, UI", "Fx → Hx" to "5, 6, HS", "Hx" to "7, 4, MP", "∀x Hx" to "8, UG", "∀x Fx → ∀x Hx" to "CP"),
+            ),
+        ),
+    )
+
+    private val ipQuantLesson = LessonDef(
+        "pred-10", "Indirect proof with quantifiers", "Prove \"nothing is F\" by assuming something is.", listOf(AIP, IP),
+        listOf(
+            Read(
+                "Assume the opposite, again",
+                listOf("To prove ¬∃x Fx (\"nothing is F\"), assume ∃x Fx. EI names the F thing, and a contradiction about that named thing closes the proof."),
+            ),
+            Guided(
+                "Nothing is F", listOf("∀x(Fx → Gx)", "¬∃x Gx"), "¬∃x Fx", listOf(EI, UI, MP, QN, Conj, AIP, IP),
+                listOf(
+                    Coach("Tap AIP: it fills in ∃x Fx, the opposite of the goal. Add it.") { it.hasAssumed("∃x Fx", AIP) },
+                    Coach("Name the F thing with EI: write Fa.") { it.has("Fa") },
+                    Coach("Use UI on line 1 with a, then MP, to get Ga.") { it.has("Ga") },
+                    Coach("Line 2 says nothing is G. QN turns it into ∀x ¬Gx.") { it.has("∀x ¬Gx") },
+                    Coach("Use UI with a to get ¬Ga. Watch it turn red.") { it.has("¬Ga") },
+                    Coach("Join Ga and ¬Ga with Conj, then close with IP.") { it.done },
+                ),
+                "Done. Assuming something is F led to a contradiction, so nothing is F.",
+                solution = listOf("∃x Fx" to "AIP", "Fa" to "3, EI", "Fa → Ga" to "1, UI", "Ga" to "5, 4, MP", "∀x ¬Gx" to "2, QN", "¬Ga" to "7, UI", "Ga ∧ ¬Ga" to "6, 8, Conj", "¬∃x Fx" to "IP"),
+            ),
+        ),
+    )
+
+    private val relationsLesson = LessonDef(
+        "pred-11", "Two-place predicates", "Relations between things, where order matters.", emptyList(),
+        listOf(
+            Read(
+                "Relations",
+                listOf(
+                    "Some predicates relate two things. Lab can mean \"a loves b\". Order matters: Lba says b loves a, which is a different claim. Laa says a loves itself.",
+                    "With quantifiers: ∀x∃y Lxy is \"everyone loves someone\". ∃y∀x Lxy is \"there's someone everyone loves\".",
+                ),
+            ),
+            WorldStep(
+                "Explore", "Each square says whether the row thing relates to the column thing. Make Lab true but Lba false.",
+                listOf("Lab", "Lba"), WorldGoal.COUNTEREXAMPLE, success = "Right: a loving b doesn't mean b loves a.",
+            ),
+            WorldStep(
+                "Everyone loves someone", "Make ∀x∃y Lxy true: every row needs at least one square on.",
+                listOf("∀x∃y Lxy"), WorldGoal.ALL_TRUE, success = "Each thing relates to something, though not necessarily the same thing.",
+            ),
+            Quiz(
+                "Translate", "\"Someone is loved by everyone\"", listOf("∃y∀x Lxy", "∀x∃y Lxy", "∀y∃x Lxy"), 0,
+                "There is one y such that every x loves it. ∀x∃y Lxy lets each x love a different someone.",
+            ),
+        ),
+    )
+
+    private val orderLesson = LessonDef(
+        "pred-12", "Quantifier order", "Why ∀x∃y and ∃y∀x are different.", listOf(EI, UG),
+        listOf(
+            WorldStep(
+                "Find the gap", "Everyone loves someone, so someone is loved by everyone? Find a counterexample.",
+                listOf("∀x∃y Lxy", "∃y∀x Lxy"), WorldGoal.COUNTEREXAMPLE, argument = true,
+                success = "Everyone loves someone, but no one thing is loved by all. The argument is invalid.",
+            ),
+            Read(
+                "The rule that stops a fake proof",
+                listOf(
+                    "A tempting \"proof\": from ∀x∃y Lxy, use UI with x to get ∃y Lxy, then EI to get Lxa, then UG to get ∀x Lxa, then EG to get ∃y∀x Lxy.",
+                    "The UG step is illegal. The name a came from EI while x was free, so a may depend on x: each x may love a different thing. The app blocks UG on a variable that was free in a line from EI.",
+                    "The other direction is valid: if someone is loved by everyone, then everyone loves someone.",
+                ),
+            ),
+            Guided(
+                "The valid direction", listOf("∃x∀y Lxy"), "∀y∃x Lxy", listOf(EI, UI, EG, UG),
+                listOf(
+                    Coach("Use EI on line 1 with a new name: write ∀y Lay.") { it.has("∀y Lay") },
+                    Coach("Use UI with the variable y: Lay.") { it.has("Lay") },
+                    Coach("Use EG, putting x in place of a: ∃x Lxy.") { it.has("∃x Lxy") },
+                    Coach("Use UG on y: ∀y∃x Lxy. This is allowed because y wasn't free in the line that came from EI.") { it.done },
+                ),
+                "Done. ∃x∀y gives ∀y∃x, but never the other way round.",
+                solution = listOf("∀y Lay" to "1, EI", "Lay" to "2, UI", "∃x Lxy" to "3, EG", "∀y∃x Lxy" to "4, UG"),
+            ),
+        ),
+    )
+
+    private val relProofsLesson = LessonDef(
+        "pred-13", "Proofs with relations", "Symmetry, transitivity and friends.", listOf(UI),
+        listOf(
+            Read("One quantifier at a time", listOf("UI removes the outermost quantifier only. For ∀x∀y φ, use UI once for x, then again for y.")),
+            Guided(
+                "Transitivity", listOf("∀x∀y∀z((Lxy ∧ Lyz) → Lxz)", "Lab", "Lbc"), "Lac", listOf(UI, Conj, MP),
+                listOf(
+                    Coach("Use UI on line 1 with a: ∀y∀z((Lay ∧ Lyz) → Laz).") { it.has("∀y∀z((Lay ∧ Lyz) → Laz)") },
+                    Coach("Again with b: ∀z((Lab ∧ Lbz) → Laz).") { it.has("∀z((Lab ∧ Lbz) → Laz)") },
+                    Coach("And with c: (Lab ∧ Lbc) → Lac.") { it.has("(Lab ∧ Lbc) → Lac") },
+                    Coach("Join lines 2 and 3 with Conj, then finish with MP.") { it.done },
+                ),
+                "Done: a relates to b, b to c, so a to c.",
+                solution = listOf("∀y∀z((Lay ∧ Lyz) → Laz)" to "1, UI", "∀z((Lab ∧ Lbz) → Laz)" to "4, UI", "(Lab ∧ Lbc) → Lac" to "5, UI", "Lab ∧ Lbc" to "2, 3, Conj", "Lac" to "6, 7, MP"),
+            ),
+            Practice(
+                "Symmetry and \"some\"", "Use EI first, then UI twice.", listOf("∀x∀y(Lxy → Lyx)", "∃y Lay"), "∃y Lya", listOf(EI, UI, MP, EG),
+                solution = listOf("Lab" to "2, EI", "∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "4, UI", "Lba" to "5, 3, MP", "∃y Lya" to "6, EG"),
+            ),
+        ),
+    )
+
     private val PRED_INNER = listOf(MP, MT, HS, DS, Simp, Conj)
 
     val predicateCourses = listOf(
         Course(
             "pred-quant", "Quantifiers", "∀ · ∃ · UI · EG", "What \"all\" and \"some\" mean, and how to use them.",
             Spec(PRED_INNER + listOf(UI, EG), emptyList(), 1..3, 1..4, 3, 0.2, 6, 0.15, mapOf(ATOM to 3.0, NEG to 1.0), lift = setOf(Lift.INSTANCE)),
-            listOf(thingsLesson, uiLesson, egLesson), track = Track.PREDICATE,
+            listOf(thingsLesson, translateLesson, uiLesson, egLesson), track = Track.PREDICATE,
         ),
         Course(
             "pred-allsome", "All and Some", "UG · EI", "Prove \"all\" statements and reason from \"some\".",
             Spec(PRED_INNER + listOf(Add, UI, EG, EI, UG), emptyList(), 1..3, 1..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0), lift = setOf(Lift.UNIVERSAL, Lift.EXISTENTIAL)),
-            listOf(ugLesson, eiLesson), track = Track.PREDICATE,
+            listOf(ugLesson, eiLesson, invalidLesson), track = Track.PREDICATE,
         ),
         Course(
             "pred-qn", "Quantifier Negation", "QN", "\"Not all\" and \"none\": moving negations past quantifiers.",
             Spec(PRED_INNER + listOf(Add, DN, DeM, Impl, UI, EG, EI, UG, QN), emptyList(), 1..3, 1..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0), lift = setOf(Lift.NEGATION)),
             listOf(qnLesson), track = Track.PREDICATE,
         ),
+        Course(
+            "pred-assume", "Quantifiers and Assumptions", "CP · IP with ∀ ∃", "Conditional and indirect proof in predicate logic.",
+            Spec(PRED_INNER + listOf(Add, UI, EG, EI, UG, QN, ACP, CP, AIP, IP), emptyList(), 1..3, 1..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0), lift = setOf(Lift.CONDITIONAL)),
+            listOf(cpQuantLesson, ipQuantLesson), track = Track.PREDICATE,
+        ),
+        Course(
+            "pred-rel", "Relations", "Lxy · quantifier order", "Two-place predicates, and why ∀x∃y isn't ∃y∀x.",
+            Spec(listOf(MP, MT, Conj, Impl, Taut, UI, EG, EI, UG), emptyList(), 1..1, 1..9, 3, 0.0, 9, 0.0, mapOf(ATOM to 1.0), relational = true),
+            listOf(relationsLesson, orderLesson, relProofsLesson), track = Track.PREDICATE,
+        ),
+    )
+
+    const val DAILY_PRED_ID = "daily-pred"
+
+    /** The daily predicate proof: a mixed predicate puzzle, the same for everyone each day. */
+    val dailyPredicate = Course(
+        DAILY_PRED_ID, "Daily Predicate Proof", "Mixed", "A new predicate-logic proof every day.",
+        Spec(PRED_INNER + listOf(Add, DN, DeM, Impl, UI, EG, EI, UG, QN), emptyList(), 2..3, 2..5, 3, 0.2, 6, 0.15, mapOf(ATOM to 2.0, NEG to 1.0, IMP to 2.0),
+            lift = setOf(Lift.INSTANCE, Lift.UNIVERSAL, Lift.EXISTENTIAL, Lift.NEGATION)),
+        emptyList(), track = Track.PREDICATE,
     )
 
     /** Every course, both tabs. */
@@ -875,7 +1080,13 @@ object Curriculum {
         emptyList(),
     )
 
-    fun byId(id: String): Course = if (id == DAILY_ID) daily else allCourses.first { it.id == id }
+    fun byId(id: String): Course = when (id) {
+        DAILY_ID -> daily
+        DAILY_PRED_ID -> dailyPredicate
+        else -> allCourses.first { it.id == id }
+    }
+
+    fun isDaily(id: String) = id == DAILY_ID || id == DAILY_PRED_ID
 
     fun lesson(id: String): Pair<Course, LessonDef> =
         allCourses.firstNotNullOf { c -> c.lessons.firstOrNull { it.id == id }?.let { c to it } }

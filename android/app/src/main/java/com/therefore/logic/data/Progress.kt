@@ -19,6 +19,8 @@ data class DayResult(val grade: String, val stars: Int) {
 data class Progress(
     val courses: Map<String, CourseStats> = emptyMap(),
     val days: Map<String, DayResult> = emptyMap(),
+    /** The daily predicate proof, by date. */
+    val predicateDays: Map<String, DayResult> = emptyMap(),
     val streak: Int = 0,
     val bestStreak: Int = 0,
     val totalSolved: Int = 0,
@@ -47,10 +49,12 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
         fun compute(attempts: List<Attempt>, today: LocalDate): Progress {
             val courses = HashMap<String, CourseStats>()
             val days = HashMap<String, DayResult>()
+            val predicateDays = HashMap<String, DayResult>()
             for (a in attempts) {
-                if (a.courseId == Curriculum.DAILY_ID) {
-                    val prev = days[a.date]
-                    days[a.date] = when {
+                if (Curriculum.isDaily(a.courseId)) {
+                    val map = if (a.courseId == Curriculum.DAILY_ID) days else predicateDays
+                    val prev = map[a.date]
+                    map[a.date] = when {
                         prev == null -> DayResult(a.grade, a.stars)
                         a.revealed -> prev
                         prev.studied -> DayResult(a.grade, a.stars)
@@ -61,14 +65,16 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
                     courses[a.courseId] = CourseStats(prev.solved + 1, Grades.better(a.grade, prev.best))
                 }
             }
-            fun solvedOn(d: LocalDate) = days[d.toString()]?.let { !it.studied } == true
+            // A day counts toward the streak if either daily proof was solved.
+            fun solvedOn(d: LocalDate) = listOf(days, predicateDays).any { m -> m[d.toString()]?.let { !it.studied } == true }
             var day = if (solvedOn(today)) today else today.minusDays(1)
             var streak = 0
             while (solvedOn(day)) { streak++; day = day.minusDays(1) }
             var best = 0
             var run = 0
             var prev: LocalDate? = null
-            for (d in days.filterValues { !it.studied }.keys.map(LocalDate::parse).sorted()) {
+            val solvedDays = (days.filterValues { !it.studied }.keys + predicateDays.filterValues { !it.studied }.keys).toSet()
+            for (d in solvedDays.map(LocalDate::parse).sorted()) {
                 run = if (prev != null && prev.plusDays(1) == d) run + 1 else 1
                 best = maxOf(best, run)
                 prev = d
@@ -76,6 +82,7 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
             return Progress(
                 courses = courses,
                 days = days,
+                predicateDays = predicateDays,
                 streak = streak,
                 bestStreak = best,
                 totalSolved = attempts.count { !it.revealed },
