@@ -36,10 +36,11 @@ class MainActivity : ComponentActivity() {
             val dark = when (settings.theme) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
+                ThemeMode.DARK, ThemeMode.BLACK -> true
             }
-            DisposableEffect(dark) {
-                val bar = if (dark) SystemBarStyle.dark(DarkPalette.surface.toArgb())
+            DisposableEffect(dark, settings.theme) {
+                val bar = if (settings.theme == ThemeMode.BLACK) SystemBarStyle.dark(android.graphics.Color.BLACK)
+                else if (dark) SystemBarStyle.dark(DarkPalette.surface.toArgb())
                 else SystemBarStyle.light(LightPalette.bg.toArgb(), DarkPalette.bg.toArgb())
                 enableEdgeToEdge(statusBarStyle = bar, navigationBarStyle = bar)
                 onDispose {}
@@ -48,6 +49,16 @@ class MainActivity : ComponentActivity() {
                 ThereforeApp(game, settings, openDaily)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        game.resume()
+    }
+
+    override fun onStop() {
+        game.pause()
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

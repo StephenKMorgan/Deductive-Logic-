@@ -205,19 +205,24 @@ fun SettingsScreen(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Color", style = MaterialTheme.typography.titleSmall)
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                val dark = p.bg.luminance() < 0.5f
-                                com.therefore.logic.data.AccentTheme.entries.forEach { a ->
-                                    val selected = settings.accent == a
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onAccent(a) }
-                                        .semantics { contentDescription = "${a.label} color${if (selected) ", selected" else ""}" }) {
-                                        androidx.compose.foundation.layout.Box(
-                                            Modifier.size(40.dp).clip(CircleShape).background(com.therefore.logic.ui.theme.accentSwatch(a, dark))
-                                                .border(if (selected) 3.dp else 0.dp, p.ink, CircleShape),
-                                            contentAlignment = Alignment.Center,
-                                        ) { if (selected) Text("✓", color = p.surface, fontWeight = FontWeight.Bold) }
-                                        Text(a.label, style = MaterialTheme.typography.labelSmall, color = p.muted)
+                            val dark = p.bg.luminance() < 0.5f
+                            // Four to a row, so the labels never collide as colors are added or the text grows.
+                            com.therefore.logic.data.AccentTheme.entries.chunked(4).forEach { row ->
+                                Row(Modifier.fillMaxWidth()) {
+                                    row.forEach { a ->
+                                        val selected = settings.accent == a
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f).clickable { onAccent(a) }
+                                            .padding(vertical = 4.dp)
+                                            .semantics { contentDescription = "${a.label} color${if (selected) ", selected" else ""}" }) {
+                                            androidx.compose.foundation.layout.Box(
+                                                Modifier.size(40.dp).clip(CircleShape).background(com.therefore.logic.ui.theme.accentSwatch(a, dark))
+                                                    .border(if (selected) 3.dp else 0.dp, p.ink, CircleShape),
+                                                contentAlignment = Alignment.Center,
+                                            ) { if (selected) Text("✓", color = p.surface, fontWeight = FontWeight.Bold) }
+                                            Text(a.label, style = MaterialTheme.typography.labelSmall, color = p.muted, maxLines = 1)
+                                        }
                                     }
+                                    repeat(4 - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
                                 }
                             }
                         }
@@ -233,7 +238,8 @@ fun SettingsScreen(
                             Text("Theme", style = MaterialTheme.typography.titleSmall)
                             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                                 ThemeMode.entries.forEachIndexed { i, m ->
-                                    SegmentedButton(settings.theme == m, { onTheme(m) }, SegmentedButtonDefaults.itemShape(i, 3)) {
+                                    // No check icon: four labels need the room.
+                                    SegmentedButton(settings.theme == m, { onTheme(m) }, SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size), icon = {}) {
                                         Text(m.name.lowercase().replaceFirstChar { it.uppercase() })
                                     }
                                 }

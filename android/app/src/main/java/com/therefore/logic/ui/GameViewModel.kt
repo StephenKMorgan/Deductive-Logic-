@@ -56,7 +56,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
                 c.db.savedGame().get()?.let { runCatching { json.decodeFromString<GameState>(it.json) }.getOrNull() }
             }
             // Don't overwrite a game that was started while loading.
-            if (_state.value == null) _state.value = saved
+            if (_state.value == null) _state.value = saved?.let { Session.resume(Session.pause(it)) }
             _loaded.value = true
         }
     }
@@ -70,11 +70,25 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
     private fun apply(f: (GameState) -> Outcome) {
         val s = _state.value ?: return
         if (s.done) return
-        val o = f(s)
+        val o = f(Session.tick(s))
         c.haptics.play(o.effect)
         _state.value = o.state
         persist(o.state)
         if (o.state.done) record(o.state)
+    }
+
+    /** Stops the puzzle clock while the app is in the background. */
+    fun pause() {
+        val s = _state.value ?: return
+        val p = Session.pause(s)
+        if (p != s) { _state.value = p; persist(p) }
+    }
+
+    /** Restarts the puzzle clock when the app comes back. */
+    fun resume() {
+        val s = _state.value ?: return
+        val r = Session.resume(s)
+        if (r != s) _state.value = r
     }
 
     /** Whether there's an unfinished puzzle of this kind to resume. */

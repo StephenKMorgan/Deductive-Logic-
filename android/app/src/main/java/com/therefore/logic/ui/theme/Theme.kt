@@ -55,13 +55,29 @@ private val ACCENTS = mapOf(
     AccentTheme.ROSE to Accent(Color(0xFFBE185D), Color(0xFFFBE4EE), Color.White, Color(0xFFF9A8D4), Color(0xFF3D1A2B)),
     AccentTheme.AMBER to Accent(Color(0xFFB45309), Color(0xFFFCEFD9), Color.White, Color(0xFFFCD34D), Color(0xFF3A2A10)),
     AccentTheme.FOREST to Accent(Color(0xFF166534), Color(0xFFDFF3E6), Color.White, Color(0xFF86EFAC), Color(0xFF14301E)),
+    AccentTheme.GRAPHITE to Accent(Color(0xFF3A3F47), Color(0xFFE4E6EA), Color.White, Color(0xFFC8CCD3), Color(0xFF2E3238)),
+)
+
+/** Graphite drops the blue tint from the paper and ink too, for an all-grey look. */
+private val GraphiteLight = LightPalette.copy(
+    bg = Color(0xFFF3F3F4), sunk = Color(0xFFE9E9EB), ink = Color(0xFF18191C), muted = Color(0xFF5E6168), line = Color(0xFFDCDDE0),
+)
+private val GraphiteDark = DarkPalette.copy(
+    bg = Color(0xFF141517), surface = Color(0xFF1D1E21), sunk = Color(0xFF0F1011), ink = Color(0xFFE8E9EB), muted = Color(0xFF9EA1A8), line = Color(0xFF2F3135),
+)
+
+/** True black for OLED screens: black paper, near-black cards, grey hairlines. */
+private fun blackOf(p: Palette) = p.copy(
+    bg = Color.Black, surface = Color(0xFF0D0D0E), sunk = Color.Black, line = Color(0xFF2A2A2D), onAccent = Color.Black,
 )
 
 /** The light or dark palette painted in [accent]. */
-fun paletteFor(dark: Boolean, accent: AccentTheme): Palette {
+fun paletteFor(dark: Boolean, accent: AccentTheme, black: Boolean = false): Palette {
     val a = ACCENTS.getValue(accent)
-    return if (dark) DarkPalette.copy(accent = a.dark, accentSoft = a.darkSoft, onAccent = DarkPalette.bg)
-    else LightPalette.copy(accent = a.light, accentSoft = a.lightSoft, onAccent = a.onLight)
+    val graphite = accent == AccentTheme.GRAPHITE
+    val p = if (dark) (if (graphite) GraphiteDark else DarkPalette).let { it.copy(accent = a.dark, accentSoft = a.darkSoft, onAccent = it.bg) }
+    else (if (graphite) GraphiteLight else LightPalette).copy(accent = a.light, accentSoft = a.lightSoft, onAccent = a.onLight)
+    return if (dark && black) blackOf(p) else p
 }
 
 /** The swatch shown in settings. */
@@ -95,9 +111,9 @@ fun ThereforeTheme(
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
+        ThemeMode.DARK, ThemeMode.BLACK -> true
     }
-    val p = paletteFor(dark, accent)
+    val p = paletteFor(dark, accent, mode == ThemeMode.BLACK)
     val scheme = if (dark) darkColorScheme(
         primary = p.accent, onPrimary = p.onAccent, primaryContainer = p.accentSoft, onPrimaryContainer = p.ink,
         background = p.bg, onBackground = p.ink, surface = p.surface, onSurface = p.ink, surfaceVariant = p.sunk,

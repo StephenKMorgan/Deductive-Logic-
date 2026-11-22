@@ -8,7 +8,8 @@ import java.time.temporal.ChronoUnit
 data class LearningStats(
     val totalSolved: Int,
     val perfectShare: Float,
-    val averageSeconds: Long,
+    /** The middle solve time: one puzzle left open overnight can't drag it the way it would an average. */
+    val medianSeconds: Long,
     val lessonsDone: Int,
     /** Proofs solved on each of the last 30 days, oldest first. */
     val perDay: List<Pair<LocalDate, Int>>,
@@ -25,6 +26,12 @@ data class LearningStats(
 )
 
 object Stats {
+    fun median(xs: List<Long>): Long {
+        if (xs.isEmpty()) return 0
+        val v = xs.sorted()
+        return if (v.size % 2 == 1) v[v.size / 2] else (v[v.size / 2 - 1] + v[v.size / 2]) / 2
+    }
+
     fun compute(attempts: List<Attempt>, progress: Progress, today: LocalDate): LearningStats {
         val solved = attempts.filter { !it.revealed }
         val byDay = solved.groupingBy { ProgressRepository.finishedOn(it) }.eachCount()
@@ -45,7 +52,7 @@ object Stats {
         return LearningStats(
             totalSolved = solved.size,
             perfectShare = if (solved.isEmpty()) 0f else solved.count { it.mistakes == 0 && it.hints == 0 }.toFloat() / solved.size,
-            averageSeconds = if (solved.isEmpty()) 0 else solved.sumOf { it.seconds } / solved.size,
+            medianSeconds = median(solved.map { it.seconds }),
             lessonsDone = progress.lessonsDone.size,
             perDay = perDay,
             grades = grades,

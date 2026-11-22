@@ -42,11 +42,29 @@ interface BoardActions {
 object Session {
     private val HINT_COST = intArrayOf(0, 4, 8, 15)
 
+    /** The most one quiet stretch can add to a puzzle's time: thinking counts, wandering off doesn't. */
+    const val IDLE_CAP_MS = 5 * 60_000L
+
+    /** Adds the time since the last tick (capped) and restarts the clock. */
+    fun tick(s: GameState, now: Long = System.currentTimeMillis()): GameState {
+        if (s.done) return s
+        val last = s.lastTick ?: return s.copy(lastTick = now)
+        return s.copy(activeMs = s.activeMs + (now - last).coerceIn(0, IDLE_CAP_MS), lastTick = now)
+    }
+
+    /** Stops the clock, e.g. when the app goes to the background. */
+    fun pause(s: GameState, now: Long = System.currentTimeMillis()): GameState =
+        if (s.done || s.lastTick == null) s else tick(s, now).copy(lastTick = null)
+
+    /** Starts the clock again without counting the paused time. */
+    fun resume(s: GameState, now: Long = System.currentTimeMillis()): GameState =
+        if (s.done || s.lastTick != null) s else s.copy(lastTick = now)
+
     fun newGame(courseId: String, level: Int, mode: Mode, puzzle: Puzzle, rules: List<Rule>, date: String? = null, lessonId: String? = null) =
         GameState(
             courseId = courseId, level = level, mode = mode, lessonId = lessonId, date = date, puzzle = puzzle, rules = rules,
             lines = puzzle.premises.map { ProofLine(it, null) }, startedAt = System.currentTimeMillis(),
-        )
+        ).let { it.copy(lastTick = it.startedAt) }
 
     /** Clears a stale "line accepted" message once the next line is started. */
     private fun GameState.touched() =
@@ -180,10 +198,11 @@ object Session {
     fun giveUp(s: GameState) = finish(s.copy(revealed = true))
 
     /** Grades the proof: mistakes, hints and extra lines lower the score. */
-    fun finish(s: GameState): GameState {
+    fun finish(state: GameState): GameState {
+        val s = tick(state)
         val model = s.puzzle.solution.size
         val yours = s.lines.size - s.premiseCount
-        val seconds = (System.currentTimeMillis() - s.startedAt) / 1000
+        val seconds = s.activeMs / 1000
         val result = if (s.revealed) GameResult(Grades.REVEALED, 0, 0, model, yours, seconds) else {
             val raw = 100 - 8 * s.mistakes.size - s.hintPenalty - 4 * maxOf(0, yours - model)
             val score = raw.coerceIn(50, 100)
@@ -192,6 +211,6 @@ object Session {
             val grade = when { perfect -> Grades.S; score >= 90 -> "A"; score >= 80 -> "B"; score >= 70 -> "C"; else -> "D" }
             GameResult(grade, when (grade) { Grades.S, "A" -> 3; "B" -> 2; else -> 1 }, score, model, yours, seconds)
         }
-        return s.copy(done = true, result = result)
+        return s.copy(done = true, result = result, lastTick = null)
     }
 }

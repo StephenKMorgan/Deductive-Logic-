@@ -113,5 +113,15 @@ class CalendarStatsThemeTest {
         tapDesc("Back")
         waitFor("Courses")
         shot("Q6-home-teal")
+        // Graphite with true black.
+        tapDesc("Settings")
+        waitFor("Color")
+        tapDesc("Graphite color")
+        rule.onNodeWithText("Black").performClick()
+        Thread.sleep(300); rule.waitForIdle()
+        shot("Q7-settings-graphite-black")
+        tapDesc("Back")
+        waitFor("Courses")
+        shot("Q8-home-graphite-black")
     }
 }

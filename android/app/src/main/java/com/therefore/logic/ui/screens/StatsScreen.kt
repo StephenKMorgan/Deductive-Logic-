@@ -54,8 +54,8 @@ fun StatsScreen(stats: LearningStats, progress: Progress, onBack: () -> Unit) {
             // Headline numbers: these are single values, so tiles rather than charts.
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val time = stats.averageSeconds.let { if (it >= 60) "${it / 60}m ${it % 60}s" else "${it}s" }
-                    for ((v, l) in listOf("${stats.totalSolved}" to "proofs solved", "${(stats.perfectShare * 100).toInt()}%" to "perfect proofs", time to "average time")) {
+                    val time = stats.medianSeconds.let { if (it >= 60) "${it / 60}m ${it % 60}s" else "${it}s" }
+                    for ((v, l) in listOf("${stats.totalSolved}" to "proofs solved", "${(stats.perfectShare * 100).toInt()}%" to "perfect proofs", time to "typical time")) {
                         Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(p.surface).padding(12.dp)) {
                             Text(v, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                             Text(l, style = MaterialTheme.typography.bodySmall, color = p.muted)

@@ -12,10 +12,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode { SYSTEM, LIGHT, DARK,
+    /** Pure black backgrounds, for OLED screens. */
+    BLACK }
 
 /** The accent color the app is painted in. */
-enum class AccentTheme(val label: String) { BLUE("Blue"), TEAL("Teal"), PURPLE("Purple"), ROSE("Rose"), AMBER("Amber"), FOREST("Forest") }
+enum class AccentTheme(val label: String) { BLUE("Blue"), TEAL("Teal"), PURPLE("Purple"), ROSE("Rose"), AMBER("Amber"), FOREST("Forest"), GRAPHITE("Graphite") }
 
 /** Text size, applied as a multiplier on top of the phone's own font size. */
 enum class TextSize(val label: String, val scale: Float) { NORMAL("Normal", 1f), LARGE("Large", 1.15f), LARGER("Larger", 1.3f) }

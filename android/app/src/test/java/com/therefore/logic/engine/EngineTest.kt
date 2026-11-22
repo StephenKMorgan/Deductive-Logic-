@@ -1,5 +1,7 @@
 package com.therefore.logic.engine
 
+import com.therefore.logic.data.Stats
+
 import com.therefore.logic.content.Curriculum
 import com.therefore.logic.content.LessonStep
 import com.therefore.logic.content.f
@@ -208,6 +210,20 @@ class EngineTest {
         t = Session.key(t, 'R').state
         t = Session.selectRule(t, Rule.ACP).state
         assertEquals("R", t.tokens.joinToString(""))
+    }
+
+    @Test fun puzzleClockSkipsBackgroundAndCapsIdleTime() {
+        val puzzle = Generator.generate(Curriculum.byId(Curriculum.DAILY_ID).spec, 1, 7L)
+        var s = Session.newGame("t", 1, Mode.PRACTICE, puzzle, Rule.entries).copy(lastTick = 0L)
+        s = Session.tick(s, 30_000)                    // 30 s of solving
+        s = Session.pause(s, 40_000)                   // 10 more, then the app goes to the background
+        s = Session.resume(s, 10 * 3_600_000L)         // ...for ten hours, which don't count
+        s = Session.tick(s, 10 * 3_600_000L + 20_000)  // 20 s more
+        assertEquals(60_000L, s.activeMs)
+        s = Session.tick(s, 20 * 3_600_000L)           // left open and idle: capped
+        assertEquals(60_000L + Session.IDLE_CAP_MS, s.activeMs)
+        assertEquals(0L, Stats.median(emptyList()))
+        assertEquals(40L, Stats.median(listOf(30L, 40L, 100_000L)))   // one overnight solve doesn't move it
     }
 
     @Test fun contradictionsAreFlagged() {

@@ -54,6 +54,10 @@ data class GameState(
     val revealed: Boolean = false,
     val done: Boolean = false,
     val startedAt: Long,
+    /** Time spent actively solving, in ms. Background time is never counted, and long idle gaps are capped. */
+    val activeMs: Long = 0,
+    /** When the clock last ticked; null while paused (app in the background). */
+    val lastTick: Long? = null,
     val feedback: Feedback? = null,
     val result: GameResult? = null,
 ) {
