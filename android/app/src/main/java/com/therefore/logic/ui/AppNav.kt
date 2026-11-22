@@ -32,6 +32,11 @@ import com.therefore.logic.reminder.Reminders
 import com.therefore.logic.ui.screens.DailyScreen
 import com.therefore.logic.ui.screens.HomeScreen
 import com.therefore.logic.ui.screens.PredicateScreen
+import com.therefore.logic.ui.screens.GamesScreen
+import com.therefore.logic.ui.screens.GameId
+import com.therefore.logic.ui.screens.IslandScreen
+import com.therefore.logic.ui.screens.QuizScreen
+import com.therefore.logic.ui.screens.BoardScreen
 import com.therefore.logic.ui.screens.CourseAction
 import com.therefore.logic.ui.screens.CourseScreen
 import com.therefore.logic.ui.screens.LessonPlayerScreen
@@ -52,6 +57,7 @@ private object Routes {
     const val DAILY = "daily"
     const val RULES = "rules"
     const val PREDICATE = "predicate"
+    const val GAMES = "games"
     const val SETTINGS = "settings"
     const val COURSE = "course/{id}"
     const val LESSON = "lesson/{id}"
@@ -62,7 +68,8 @@ private object Routes {
 }
 
 private val TABS = listOf(
-    Triple(Routes.HOME, "Learn", "∴"), Triple(Routes.PREDICATE, "Predicate", "∀"), Triple(Routes.DAILY, "Daily", "◷"), Triple(Routes.RULES, "Rules", "§"),
+    Triple(Routes.HOME, "Learn", "∴"), Triple(Routes.PREDICATE, "Predicate", "∀"), Triple(Routes.GAMES, "Games", "◆"),
+    Triple(Routes.DAILY, "Daily", "◷"), Triple(Routes.RULES, "Rules", "§"),
 )
 
 @Composable
@@ -70,6 +77,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
     val context = LocalContext.current
     val container = (context.applicationContext as TheApp).container
     val nav = rememberNavController()
+    val gamesVm: GamesViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val progress by container.progress.progress.collectAsStateWithLifecycle(Progress())
     val game by vm.state.collectAsStateWithLifecycle()
@@ -122,6 +130,10 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
             }
             composable(Routes.RULES) { RulesScreen() }
             composable(Routes.PREDICATE) { PredicateScreen(progress) { nav.navigate(Routes.course(it)) } }
+            composable(Routes.GAMES) { GamesScreen(gamesVm) { nav.navigate(it.route) } }
+            composable(GameId.ISLAND.route) { IslandScreen(gamesVm) { nav.popBackStack() } }
+            composable(GameId.QUIZ.route) { QuizScreen(gamesVm) { nav.popBackStack() } }
+            composable(GameId.BOARD.route) { BoardScreen(gamesVm) { nav.popBackStack() } }
             composable(Routes.COURSE) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 CourseScreen(
@@ -184,7 +196,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                         container.scope.launch { container.settings.setReminder(on, at) }
                         if (on) Reminders.schedule(context, at) else Reminders.cancel(context)
                     },
-                    onReset = { vm.resetAll() },
+                    onReset = { vm.resetAll(); container.scope.launch { container.games.reset() } },
                 )
             }
         }

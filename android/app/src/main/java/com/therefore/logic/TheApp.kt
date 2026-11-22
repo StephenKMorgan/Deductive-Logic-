@@ -16,6 +16,7 @@ class AppContainer(app: Application) {
     val settings = SettingsRepository(app)
     val progress = ProgressRepository(db.attempts(), db.lessons())
     val haptics = Haptics(app)
+    val games = com.therefore.logic.data.GameStatsRepository(app)
     val scope = CoroutineScope(SupervisorJob())
 }
 

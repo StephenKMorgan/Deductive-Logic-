@@ -354,8 +354,9 @@ private fun RulePicker(rules: List<Rule>, selected: Rule?, onSelect: (Rule?) -> 
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for ((label, inGroup) in listOf<Pair<String, (Rule) -> Boolean>>(
                 "Quantifier rules" to { it.isQuantifierRule },
-                "Rules of inference" to { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule },
-                "Replacement rules" to { it.kind == RuleKind.REPLACEMENT && !it.isQuantifierRule },
+                "Identity rules" to { it.isIdentityRule },
+                "Rules of inference" to { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule && !it.isIdentityRule },
+                "Replacement rules" to { it.kind == RuleKind.REPLACEMENT && !it.isQuantifierRule && !it.isIdentityRule },
                 "Assumptions" to { it.kind == RuleKind.ASSUMPTION || it.kind == RuleKind.CLOSE },
             )) {
                 val group = rules.filter(inGroup)
@@ -386,7 +387,7 @@ private fun RuleHelp(s: GameState) {
             when (r.kind) {
                 RuleKind.ASSUMPTION -> "${r.title} · write what you assume"
                 RuleKind.CLOSE -> "${r.title} · closes the latest assumption, no citing needed"
-                else -> "${r.title} · cite ${if (r.lines == 1) "one line" else "two lines"}"
+                else -> "${r.title} · " + when (r.lines) { 0 -> "cite no lines"; 1 -> "cite one line"; else -> "cite two lines" }
             },
             style = MaterialTheme.typography.bodySmall, color = p.muted,
         )
@@ -417,6 +418,7 @@ private fun Keypad(vm: BoardActions, s: GameState) {
             val names = all.flatMap { it.names() }.toSortedSet()
             val next = ('a'..'w').first { it != 'v' && it !in names }
             (names.take(3) + next).sorted().forEach { add(KeySpec.Sym(it, "name $it")) }
+            if (s.rules.any { it.isIdentityRule } || all.any { "=" in it.show() }) add(KeySpec.Sym('=', "equals"))
             add(KeySpec.Sym('∀', "for all"))
             add(KeySpec.Sym('∃', "there exists"))
         } else "PQRSTU".take(count).forEach { add(KeySpec.Sym(it, it.toString())) }

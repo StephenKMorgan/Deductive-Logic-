@@ -304,6 +304,7 @@ class EngineTest {
         assertTrue(Rule.QN in used.getValue("pred-qn"))
         assertTrue(Rule.CP in used.getValue("pred-assume") && Rule.UG in used.getValue("pred-assume"))
         assertTrue(Rule.UI in used.getValue("pred-rel"))
+        assertTrue(Rule.Id in used.getValue("pred-id") && Rule.IdR in used.getValue("pred-id"))
     }
 
     @Test fun worldsEvaluateQuantifiers() {
@@ -330,6 +331,21 @@ class EngineTest {
         val ug = Proofs.checkLine(lines, Rule.UG, listOf(3), p("∀x Lxa"))
         assertFalse(ug.ok)
         assertTrue(ug.message.contains("EI"))
+    }
+
+    @Test fun identity() {
+        assertEquals("¬(a = b)", p("¬(a = b)").show())
+        assertEquals(p("Fb → b = a"), p("Fb -> b=a"))
+        assertTrue(Checker.check(Rule.Id, listOf(p("Fa"), p("a = b")), p("Fb")).ok)
+        assertTrue(Checker.check(Rule.Id, listOf(p("Gb"), p("a = b")), p("Ga")).ok)      // either direction
+        assertTrue(Checker.check(Rule.Id, listOf(p("a = b"), p("b = c")), p("a = c")).ok)
+        assertFalse(Checker.check(Rule.Id, listOf(p("Fa"), p("a = b")), p("Gb")).ok)
+        assertTrue(Checker.check(Rule.IdS, listOf(p("a = b")), p("b = a")).ok)
+        assertTrue(Checker.check(Rule.IdR, emptyList(), p("c = c")).ok)
+        assertFalse(Checker.check(Rule.IdR, emptyList(), p("a = b")).ok)
+        val w = World(3, mapOf('F' to setOf(0, 1)), mapOf('a' to 0, 'b' to 1, 'c' to 2))
+        assertTrue(p("∃x∃y((Fx ∧ Fy) ∧ ¬(x = y))").eval(w))
+        assertFalse(p("∃x(Fx ∧ ∀y(Fy → y = x))").eval(w))
     }
 
     @Test fun streakCountsEitherDailyProof() {

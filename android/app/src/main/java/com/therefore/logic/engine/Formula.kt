@@ -28,6 +28,8 @@ sealed class Formula {
     data class Bin(val op: Op, val a: Formula, val b: Formula) : Formula() { override fun toString() = show() }
     /** A predicate applied to its terms: Fx, Ga (one-place) or Lxy, Lab (a relation between two things). */
     data class Pred(val p: Char, val args: String) : Formula() { override fun toString() = show() }
+    /** Identity: s and t are the same thing. */
+    data class Eq(val s: Char, val t: Char) : Formula() { override fun toString() = show() }
     /** ∀x B or ∃x B. */
     data class Quant(val q: Quantifier, val v: Char, val body: Formula) : Formula() { override fun toString() = show() }
 
@@ -35,6 +37,7 @@ sealed class Formula {
     fun show(top: Boolean = true): String = when (this) {
         is Atom -> v.toString()
         is Pred -> "$p$args"
+        is Eq -> if (top) "$s = $t" else "($s = $t)"
         is Not -> "¬" + a.show(false)
         is Quant -> "${q.symbol}$v" + (if (body is Bin || body is Quant) "" else " ") + body.show(false)
         is Bin -> {
@@ -45,7 +48,7 @@ sealed class Formula {
 
     val size: Int
         get() = when (this) {
-            is Atom, is Pred -> 1
+            is Atom, is Pred, is Eq -> 1
             is Not -> 1 + a.size
             is Quant -> 1 + body.size
             is Bin -> 1 + a.size + b.size
@@ -55,7 +58,7 @@ sealed class Formula {
     fun atoms(into: MutableSet<Char> = sortedSetOf()): Set<Char> {
         when (this) {
             is Atom -> into.add(v)
-            is Pred -> {}
+            is Pred, is Eq -> {}
             is Not -> a.atoms(into)
             is Quant -> body.atoms(into)
             is Bin -> { a.atoms(into); b.atoms(into) }
@@ -68,6 +71,7 @@ sealed class Formula {
         when (this) {
             is Atom -> {}
             is Pred -> into.add(p)
+            is Eq -> {}
             is Not -> a.predicates(into)
             is Quant -> body.predicates(into)
             is Bin -> { a.predicates(into); b.predicates(into) }
@@ -80,6 +84,7 @@ sealed class Formula {
         when (this) {
             is Atom -> {}
             is Pred -> args.forEach { into.add(it) }
+            is Eq -> { into.add(s); into.add(t) }
             is Not -> a.terms(into)
             is Quant -> { into.add(v); body.terms(into) }
             is Bin -> { a.terms(into); b.terms(into) }
@@ -92,6 +97,7 @@ sealed class Formula {
     fun freeVariables(): Set<Char> = when (this) {
         is Atom -> emptySet()
         is Pred -> args.filter(::isVariable).toSet()
+        is Eq -> listOf(s, t).filter(::isVariable).toSet()
         is Not -> a.freeVariables()
         is Quant -> body.freeVariables() - v
         is Bin -> a.freeVariables() + b.freeVariables()
@@ -101,6 +107,7 @@ sealed class Formula {
     fun subst(v: Char, t: Char): Formula = when (this) {
         is Atom -> this
         is Pred -> if (v in args) copy(args = args.replace(v, t)) else this
+        is Eq -> Eq(if (s == v) t else s, if (this.t == v) t else this.t)
         is Not -> Not(a.subst(v, t))
         is Quant -> if (this.v == v) this else copy(body = body.subst(v, t))
         is Bin -> copy(a = a.subst(v, t), b = b.subst(v, t))
@@ -108,7 +115,7 @@ sealed class Formula {
 
     val isPredicateLogic: Boolean get() = when (this) {
         is Atom -> false
-        is Pred, is Quant -> true
+        is Pred, is Quant, is Eq -> true
         is Not -> a.isPredicateLogic
         is Bin -> a.isPredicateLogic || b.isPredicateLogic
     }
@@ -122,12 +129,13 @@ sealed class Formula {
             Op.IMP -> !a.eval(v) || b.eval(v)
             Op.IFF -> a.eval(v) == b.eval(v)
         }
-        is Pred, is Quant -> error("Predicate formulas need a world to be evaluated in")
+        is Pred, is Quant, is Eq -> error("Predicate formulas need a world to be evaluated in")
     }
 
     /** Truth in a small world: [has] says whether thing i has property p; names point at things. */
     fun eval(world: World, env: Map<Char, Int> = emptyMap()): Boolean = when (this) {
         is Atom -> world.atoms[v] ?: false
+        is Eq -> (env[s] ?: world.names[s] ?: 0) == (env[t] ?: world.names[t] ?: 0)
         is Pred -> args.map { env[it] ?: world.names[it] ?: 0 }.let { things ->
             if (things.size == 1) world.has(p, things[0]) else world.relates(p, things[0], things[1])
         }
@@ -161,6 +169,7 @@ fun Formula.arities(into: MutableMap<Char, Int> = sortedMapOf()): Map<Char, Int>
     when (this) {
         is Formula.Atom -> {}
         is Formula.Pred -> into[p] = args.length
+        is Formula.Eq -> {}
         is Formula.Not -> a.arities(into)
         is Formula.Quant -> body.arities(into)
         is Formula.Bin -> { a.arities(into); b.arities(into) }
@@ -204,6 +213,7 @@ fun imp(a: Formula, b: Formula): Formula = Formula.Bin(Op.IMP, a, b)
 fun iff(a: Formula, b: Formula): Formula = Formula.Bin(Op.IFF, a, b)
 fun pred(p: Char, t: Char): Formula = Formula.Pred(p, t.toString())
 fun pred(p: Char, args: String): Formula = Formula.Pred(p, args)
+fun eq(s: Char, t: Char): Formula = Formula.Eq(s, t)
 fun all(v: Char, body: Formula): Formula = Formula.Quant(Quantifier.ALL, v, body)
 fun some(v: Char, body: Formula): Formula = Formula.Quant(Quantifier.SOME, v, body)
 
@@ -266,6 +276,7 @@ object Parser {
                 c in ")]}" -> { out.add(')'); i++ }
                 c in 'A'..'Z' -> { out.add(c); i++ }
                 c in "∀∃" -> { out.add(c); i++ }
+                c == '=' -> { out.add('='); i++ }
                 isTerm(c) -> { out.add(c); i++ }
                 else -> throw Fail("\"$c\" isn't a symbol I know. Use capital letters for statements and the connective keys.")
             }
@@ -307,7 +318,13 @@ object Parser {
                     if (args.length > 2) throw Fail("$t$args has ${args.length} terms. Predicates here take one (Fx) or two (Lxy).")
                     if (next != null && args.isNotEmpty()) pred(t, args.toString()) else atom(t)
                 }
-                isTerm(t) -> throw Fail("\"$t\" needs a predicate letter before it, like F$t.")
+                isTerm(t) && toks.getOrNull(p + 1) == '=' -> {
+                    val u = toks.getOrNull(p + 2)
+                    if (u == null || !isTerm(u)) throw Fail("\"$t =\" needs a name or variable after it, like $t = b.")
+                    p += 3
+                    eq(t, u)
+                }
+                isTerm(t) -> throw Fail("\"$t\" needs a predicate letter before it, like F$t, or an identity like $t = b.")
                 t == ')' -> throw Fail("There is a \")\" with nothing inside or before it.")
                 else -> throw Fail("\"$t\" needs a statement on its left side.")
             }

@@ -1028,6 +1028,90 @@ object Curriculum {
         ),
     )
 
+    private val identityLesson = LessonDef(
+        "pred-14", "Same thing, two names", "Identity, and swapping one name for another.", listOf(Id, IdS),
+        listOf(
+            Read(
+                "Identity",
+                listOf(
+                    "a = b says that a and b are the same thing under two names, like Mark Twain and Samuel Clemens.",
+                    "If they're the same thing, whatever is true of one is true of the other. From Fa and a = b, Substitution (Id) lets you write Fb. Symmetry (IdS) turns a = b into b = a.",
+                ),
+                rules = listOf(Id, IdS),
+            ),
+            Guided(
+                "Twain and Clemens", listOf("Wt", "t = c"), "Wc", listOf(Id),
+                listOf(Coach("Wt: Twain was a writer. t = c: Twain is Clemens. Cite both lines, choose Id and write Wc.") { it.done }),
+                "Done. Same person, so the same facts apply.",
+                solution = listOf("Wc" to "1, 2, Id"),
+            ),
+            Quiz("Check", "From Fa and a = b, what does Substitution give?", listOf("Fb", "Fa ∧ Fb", "b = a"), 0, "Swap a for b in Fa. (b = a would come from Symmetry instead.)"),
+            Practice(
+                "Your turn", "UI and MP get you Ga. Then switch names.", listOf("∀x(Fx → Gx)", "Fa", "a = b"), "Gb", listOf(UI, MP, Id),
+                solution = listOf("Fa → Ga" to "1, UI", "Ga" to "4, 2, MP", "Gb" to "5, 3, Id"),
+            ),
+        ),
+    )
+
+    private val differentLesson = LessonDef(
+        "pred-15", "Different things", "Reflexivity, and proving two things are not the same.", listOf(IdR, IP),
+        listOf(
+            Read(
+                "Not the same",
+                listOf(
+                    "¬(a = b) says a and b are different things. You prove it like any negation: assume a = b and find a contradiction.",
+                    "Reflexivity (IdR) is the simplest rule there is: you may always write a = a, citing nothing.",
+                ),
+                rules = listOf(IdR),
+            ),
+            Guided(
+                "Telling them apart", listOf("Fa", "¬Fb"), "¬(a = b)", listOf(Id, Conj, AIP, IP),
+                listOf(
+                    Coach("Tap AIP: it fills in a = b, the opposite of the goal. Add it.") { it.hasAssumed("a = b", AIP) },
+                    Coach("If a is b, then Fa makes b F too. Use Id on lines 1 and 3 to write Fb.") { it.has("Fb") },
+                    Coach("Fb contradicts line 2. Join them with Conj, then close with IP.") { it.done },
+                ),
+                "Done. a is F and b isn't, so they can't be the same thing.",
+                solution = listOf("a = b" to "AIP", "Fb" to "1, 3, Id", "Fb ∧ ¬Fb" to "4, 2, Conj", "¬(a = b)" to "IP"),
+            ),
+            Practice(
+                "Using reflexivity", "UI with a, then IdR gives the if-part for free.", listOf("∀x(x = a → Fx)"), "Fa", listOf(UI, IdR, MP),
+                solution = listOf("a = a → Fa" to "1, UI", "a = a" to "IdR", "Fa" to "2, 3, MP"),
+            ),
+        ),
+    )
+
+    private val countingLesson = LessonDef(
+        "pred-16", "Counting with logic", "\"Only\", \"at least two\", \"at most one\", \"exactly one\".", emptyList(),
+        listOf(
+            Read(
+                "Numbers without numbers",
+                listOf(
+                    "Only a is F: Fa ∧ ∀x(Fx → x = a).",
+                    "At least two things are F: ∃x∃y((Fx ∧ Fy) ∧ ¬(x = y)).",
+                    "At most one thing is F: ∀x∀y((Fx ∧ Fy) → x = y).",
+                    "Exactly one thing is F: ∃x(Fx ∧ ∀y(Fy → y = x)).",
+                ),
+            ),
+            WorldStep(
+                "At least two", "Make \"at least two things are F\" true.",
+                listOf("∃x∃y((Fx ∧ Fy) ∧ ¬(x = y))"), WorldGoal.ALL_TRUE, success = "Two different things are F, so x and y can be two distinct things.",
+            ),
+            WorldStep(
+                "Exactly one", "Now make \"exactly one thing is F\" true.",
+                listOf("∃x(Fx ∧ ∀y(Fy → y = x))"), WorldGoal.ALL_TRUE, success = "One F thing, and anything that's F is that same thing.",
+            ),
+            Quiz(
+                "Translate", "\"At most one thing is F\"", listOf("∀x∀y((Fx ∧ Fy) → x = y)", "∃x∃y((Fx ∧ Fy) ∧ ¬(x = y))", "∃x Fx"), 0,
+                "Any two F things you pick turn out to be the same thing. The second option says at least two.",
+            ),
+            Practice(
+                "At most one", "UI twice, join a and b with Conj, then MP.", listOf("∀x∀y((Fx ∧ Fy) → x = y)", "Fa", "Fb"), "a = b", listOf(UI, Conj, MP),
+                solution = listOf("∀y((Fa ∧ Fy) → a = y)" to "1, UI", "(Fa ∧ Fb) → a = b" to "4, UI", "Fa ∧ Fb" to "2, 3, Conj", "a = b" to "5, 6, MP"),
+            ),
+        ),
+    )
+
     private val PRED_INNER = listOf(MP, MT, HS, DS, Simp, Conj)
 
     val predicateCourses = listOf(
@@ -1053,8 +1137,13 @@ object Curriculum {
         ),
         Course(
             "pred-rel", "Relations", "Lxy · quantifier order", "Two-place predicates, and why ∀x∃y isn't ∃y∀x.",
-            Spec(listOf(MP, MT, Conj, Impl, Taut, UI, EG, EI, UG), emptyList(), 1..1, 1..9, 3, 0.0, 9, 0.0, mapOf(ATOM to 1.0), relational = true),
+            Spec(listOf(MP, MT, Conj, Impl, Taut, UI, EG, EI, UG), emptyList(), 1..1, 1..9, 3, 0.0, 9, 0.0, mapOf(ATOM to 1.0), patterns = "relations"),
             listOf(relationsLesson, orderLesson, relProofsLesson), track = Track.PREDICATE,
+        ),
+        Course(
+            "pred-id", "Identity", "= · Id · IdR · IdS", "Same thing or different things, and counting with logic.",
+            Spec(listOf(MP, Simp, Conj, Com, UI, EI, EG, IdR, IdS, Id, AIP, IP), emptyList(), 1..1, 1..9, 3, 0.0, 9, 0.0, mapOf(ATOM to 1.0), patterns = "identity"),
+            listOf(identityLesson, differentLesson, countingLesson), track = Track.PREDICATE,
         ),
     )
 

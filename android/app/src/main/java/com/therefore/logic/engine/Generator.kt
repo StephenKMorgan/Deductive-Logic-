@@ -35,8 +35,8 @@ data class Spec(
     val method: Method = Method.DIRECT,
     /** Non-empty for predicate-logic courses: how puzzles are lifted into quantified form. */
     val lift: Set<Lift> = emptySet(),
-    /** Predicate-logic puzzles about two-place relations, built from argument patterns. */
-    val relational: Boolean = false,
+    /** Predicate-logic puzzles built from argument patterns: "relations" or "identity". */
+    val patterns: String? = null,
 )
 
 @Serializable
@@ -372,7 +372,7 @@ object Generator {
     /** An argument pattern: premises, conclusion, and its proof as (line, justification) pairs. */
     private class Pattern(val minLevel: Int, val premises: List<String>, val conclusion: String, val proof: List<Pair<String, String>>)
 
-    private val PATTERNS = listOf(
+    private val RELATION_PATTERNS = listOf(
         // Symmetry
         Pattern(1, listOf("∀x∀y(Lxy → Lyx)", "Lab"), "Lba", listOf("∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "3, UI", "Lba" to "4, 2, MP")),
         // Relation implies a property
@@ -399,9 +399,24 @@ object Generator {
             listOf("∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "4, UI", "Lba" to "5, 3, MP", "∃y Lby" to "6, EG", "∃y Lby → Fb" to "2, UI", "Fb" to "8, 7, MP")),
     )
 
-    /** Builds a relational puzzle from a pattern, with the letters and names shuffled. */
-    private fun attemptRelational(spec: Spec, rng: Random, level: Int): Puzzle? {
-        val options = PATTERNS.filter { it.minLevel <= level && it.minLevel >= level - 2 }.ifEmpty { PATTERNS }
+    private val IDENTITY_PATTERNS = listOf(
+        Pattern(1, listOf("Fa", "a = b"), "Fb", listOf("Fb" to "1, 2, Id")),
+        Pattern(1, listOf("a = b", "Ga"), "Gb ∧ b = a", listOf("Gb" to "2, 1, Id", "b = a" to "1, IdS", "Gb ∧ b = a" to "3, 4, Conj")),
+        Pattern(2, listOf("∀x(Fx → Gx)", "Fa", "a = b"), "Gb", listOf("Fa → Ga" to "1, UI", "Ga" to "4, 2, MP", "Gb" to "5, 3, Id")),
+        Pattern(2, listOf("a = b", "b = c"), "a = c", listOf("a = c" to "1, 2, Id")),
+        Pattern(3, listOf("∀x(x = a → Fx)"), "Fa", listOf("a = a → Fa" to "1, UI", "a = a" to "IdR", "Fa" to "2, 3, MP")),
+        Pattern(3, listOf("Fa", "¬Fb"), "¬(a = b)", listOf("a = b" to "AIP", "Fb" to "1, 3, Id", "Fb ∧ ¬Fb" to "4, 2, Conj", "¬(a = b)" to "IP")),
+        Pattern(4, listOf("∃x(Fx ∧ x = a)"), "Fa", listOf("Fb ∧ b = a" to "1, EI", "Fb" to "2, Simp", "b = a ∧ Fb" to "2, Com", "b = a" to "4, Simp", "Fa" to "3, 5, Id")),
+        Pattern(4, listOf("∀x(Fx → x = a)", "Fb"), "b = a", listOf("Fb → b = a" to "1, UI", "b = a" to "3, 2, MP")),
+        Pattern(5, listOf("∀x∀y((Fx ∧ Fy) → x = y)", "Fa", "Fb"), "a = b",
+            listOf("∀y((Fa ∧ Fy) → a = y)" to "1, UI", "(Fa ∧ Fb) → a = b" to "4, UI", "Fa ∧ Fb" to "2, 3, Conj", "a = b" to "5, 6, MP")),
+        Pattern(5, listOf("Fa", "¬Ga", "Gb"), "¬(a = b)", listOf("a = b" to "AIP", "Ga" to "3, 4, Id", "Ga ∧ ¬Ga" to "5, 2, Conj", "¬(a = b)" to "IP")),
+    )
+
+    /** Builds a puzzle from an argument pattern, with the letters and names shuffled. */
+    private fun attemptPattern(spec: Spec, rng: Random, level: Int): Puzzle? {
+        val all = if (spec.patterns == "identity") IDENTITY_PATTERNS else RELATION_PATTERNS
+        val options = all.filter { it.minLevel <= level && it.minLevel >= level - 2 }.ifEmpty { all }
         val pat = options[rng.nextInt(options.size)]
         val rel = "LRK"[rng.nextInt(3)]
         val props = "FGH".toList().shuffled(rng)
@@ -435,9 +450,9 @@ object Generator {
 
     fun generate(spec: Spec, level: Int, seed: Long): Puzzle {
         val rng = Random(seed)
-        if (spec.relational) {
-            repeat(200) { attemptRelational(spec, rng, level)?.let { return it } }
-            error("No relational pattern verified")
+        if (spec.patterns != null) {
+            repeat(200) { attemptPattern(spec, rng, level)?.let { return it } }
+            error("No ${spec.patterns} pattern verified")
         }
         if (spec.lift.isNotEmpty()) {
             repeat(3000) { i -> attemptPredicate(spec, rng, if (i < 400) level else 1)?.let { return it } }

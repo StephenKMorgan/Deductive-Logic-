@@ -41,12 +41,17 @@ enum class Rule(
     EG("Existential Generalization", RuleKind.INFERENCE, 1, "Fa", "∃x Fx", "If this thing is F, then something is F."),
     EI("Existential Instantiation", RuleKind.INFERENCE, 1, "∃x Fx", "Fa (a new name)", "Something is F, so give it a name, but one that hasn't been used yet."),
     UG("Universal Generalization", RuleKind.INFERENCE, 1, "Fx", "∀x Fx", "What you showed for an arbitrary x holds for everything. Never from a name like a."),
+    IdR("Identity: Reflexivity", RuleKind.INFERENCE, 0, "nothing", "a = a", "Anything is identical to itself. Cite no lines."),
+    IdS("Identity: Symmetry", RuleKind.REPLACEMENT, 1, "a = b", "b = a", "If a is b, then b is a."),
+    Id("Identity: Substitution", RuleKind.INFERENCE, 2, "Fa, a = b", "Fb", "If a and b are the same thing, whatever is true of a is true of b."),
     QN("Quantifier Negation", RuleKind.REPLACEMENT, 1, "¬∀x Fx / ¬∃x Fx", "∃x ¬Fx / ∀x ¬Fx", "\"Not everything is F\" means \"something isn't F\", and the other way round.");
 
     val isStandard: Boolean get() = kind == RuleKind.INFERENCE || kind == RuleKind.REPLACEMENT
 
     /** The predicate-logic rules, grouped on their own in menus. */
     val isQuantifierRule: Boolean get() = this == UI || this == EG || this == EI || this == UG || this == QN
+
+    val isIdentityRule: Boolean get() = this == IdR || this == IdS || this == Id
 
     val abbr: String get() = name
 }
@@ -116,6 +121,7 @@ object Checker {
                 if (l != null && l.op == Op.AND) out += imp(l.a, imp(l.b, bin.b))
                 if (r != null && r.op == Op.IMP) out += imp(and(bin.a, r.a), r.b)
             }
+            Rule.IdS -> if (f is Formula.Eq) out += Formula.Eq(f.t, f.s)
             Rule.QN -> {
                 val qf = f as? Formula.Quant
                 val nq = (f as? Not)?.a as? Formula.Quant
@@ -234,6 +240,12 @@ object Checker {
                 }
                 return fail("Constructive Dilemma needs (P → Q) ∧ (R → S) and P ∨ R, with the \"or\" line matching the two \"if\" parts in order.")
             }
+            Rule.Id -> {
+                for ((x, e) in perms) if (e is Formula.Eq && x != r && (substitutes(x, r, e.s, e.t) || substitutes(x, r, e.t, e.s))) return OK
+                if (c.none { it is Formula.Eq }) return fail("Substitution needs an identity line like a = b as one of the lines you cite.")
+                val e = c.first { it is Formula.Eq } as Formula.Eq
+                return fail("Substitution swaps ${e.s} for ${e.t} (or ${e.t} for ${e.s}) in the other line. Your line has to match it except for those names.")
+            }
             Rule.UI -> {
                 val x = c[0] as? Formula.Quant
                 if (x == null || x.q != Quantifier.ALL) return fail("Universal Instantiation works on a line that starts with ∀ as a whole, like ∀x(Fx → Gx).", Trap.WHOLE_LINE)
@@ -283,8 +295,26 @@ object Checker {
     fun works(rule: Rule, cited: List<Formula>, result: Formula) = rule.isStandard && cited.size == rule.lines && raw(rule, cited, result).ok
 
     /** Checks one proof line. On failure, names another rule that would justify it, if any. */
+    /** Whether [r] is [a] with some occurrences of name/variable [s] replaced by [t]. */
+    fun substitutes(a: Formula, r: Formula, s: Char, t: Char): Boolean {
+        fun term(x: Char, y: Char) = x == y || (x == s && y == t)
+        return when {
+            a is Formula.Pred && r is Formula.Pred -> a.p == r.p && a.args.length == r.args.length && a.args.indices.all { term(a.args[it], r.args[it]) }
+            a is Formula.Eq && r is Formula.Eq -> term(a.s, r.s) && term(a.t, r.t)
+            a is Formula.Atom && r is Formula.Atom -> a == r
+            a is Not && r is Not -> substitutes(a.a, r.a, s, t)
+            a is Bin && r is Bin -> a.op == r.op && substitutes(a.a, r.a, s, t) && substitutes(a.b, r.b, s, t)
+            a is Formula.Quant && r is Formula.Quant -> a.q == r.q && a.v == r.v && a.v != s && a.v != t && substitutes(a.body, r.body, s, t)
+            else -> false
+        }
+    }
+
     fun check(rule: Rule, cited: List<Formula>, result: Formula): Check {
         require(rule.isStandard) { "Assumption rules are checked by Proofs.checkLine" }
+        if (rule == Rule.IdR) {
+            if (cited.isNotEmpty()) return fail("Reflexivity cites no lines: just write something like a = a.")
+            return if (result is Formula.Eq && result.s == result.t) OK else fail("Reflexivity can only write a name identical to itself, like a = a.")
+        }
         if (cited.size != rule.lines) {
             val need = if (rule.lines == 1) "one line" else "two lines"
             return fail("${rule.title} uses $need, and you cited ${cited.size}. Tap lines in the proof to cite them.")
