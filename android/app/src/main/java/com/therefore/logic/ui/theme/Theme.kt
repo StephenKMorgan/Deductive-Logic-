@@ -15,6 +15,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.therefore.logic.data.ThemeMode
+import com.therefore.logic.data.AccentTheme
+import com.therefore.logic.data.TextSize
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /** The app's colors: ink-blue accent on cool paper, plus good / bad / hint states. */
 @Immutable
@@ -41,6 +45,28 @@ val DarkPalette = Palette(
 
 val LocalPalette = staticCompositionLocalOf { LightPalette }
 
+/** Accent, soft accent and the color drawn on top of the accent, for light and dark. */
+private data class Accent(val light: Color, val lightSoft: Color, val onLight: Color, val dark: Color, val darkSoft: Color)
+
+private val ACCENTS = mapOf(
+    AccentTheme.BLUE to Accent(Color(0xFF2F45C9), Color(0xFFE3E7FB), Color.White, Color(0xFF8D9DFF), Color(0xFF232A50)),
+    AccentTheme.TEAL to Accent(Color(0xFF0F766E), Color(0xFFDDF3F0), Color.White, Color(0xFF5EEAD4), Color(0xFF13332F)),
+    AccentTheme.PURPLE to Accent(Color(0xFF6D28D9), Color(0xFFEDE6FB), Color.White, Color(0xFFC4B5FD), Color(0xFF2C2350)),
+    AccentTheme.ROSE to Accent(Color(0xFFBE185D), Color(0xFFFBE4EE), Color.White, Color(0xFFF9A8D4), Color(0xFF3D1A2B)),
+    AccentTheme.AMBER to Accent(Color(0xFFB45309), Color(0xFFFCEFD9), Color.White, Color(0xFFFCD34D), Color(0xFF3A2A10)),
+    AccentTheme.FOREST to Accent(Color(0xFF166534), Color(0xFFDFF3E6), Color.White, Color(0xFF86EFAC), Color(0xFF14301E)),
+)
+
+/** The light or dark palette painted in [accent]. */
+fun paletteFor(dark: Boolean, accent: AccentTheme): Palette {
+    val a = ACCENTS.getValue(accent)
+    return if (dark) DarkPalette.copy(accent = a.dark, accentSoft = a.darkSoft, onAccent = DarkPalette.bg)
+    else LightPalette.copy(accent = a.light, accentSoft = a.lightSoft, onAccent = a.onLight)
+}
+
+/** The swatch shown in settings. */
+fun accentSwatch(accent: AccentTheme, dark: Boolean): Color = ACCENTS.getValue(accent).let { if (dark) it.dark else it.light }
+
 /** Formulas shown as plain text (~ & v ->) instead of symbols. */
 val LocalPlainText = staticCompositionLocalOf { false }
 
@@ -59,13 +85,19 @@ private val AppTypography = Typography().run {
 val FormulaStyle = TextStyle(fontFamily = Mono, fontSize = 16.sp)
 
 @Composable
-fun ThereforeTheme(mode: ThemeMode, plainText: Boolean, content: @Composable () -> Unit) {
+fun ThereforeTheme(
+    mode: ThemeMode,
+    plainText: Boolean,
+    accent: AccentTheme = AccentTheme.BLUE,
+    textSize: TextSize = TextSize.NORMAL,
+    content: @Composable () -> Unit,
+) {
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val p = if (dark) DarkPalette else LightPalette
+    val p = paletteFor(dark, accent)
     val scheme = if (dark) darkColorScheme(
         primary = p.accent, onPrimary = p.onAccent, primaryContainer = p.accentSoft, onPrimaryContainer = p.ink,
         background = p.bg, onBackground = p.ink, surface = p.surface, onSurface = p.ink, surfaceVariant = p.sunk,
@@ -79,7 +111,11 @@ fun ThereforeTheme(mode: ThemeMode, plainText: Boolean, content: @Composable () 
         surfaceContainerHigh = p.surface, surfaceContainerLow = p.surface, surfaceContainerHighest = p.sunk,
         surfaceContainerLowest = p.surface, secondaryContainer = p.accentSoft, surfaceTint = p.accent,
     )
-    CompositionLocalProvider(LocalPalette provides p, LocalPlainText provides plainText) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(
+        LocalPalette provides p, LocalPlainText provides plainText,
+        LocalDensity provides Density(density.density, density.fontScale * textSize.scale),
+    ) {
         MaterialTheme(colorScheme = scheme, typography = AppTypography, content = content)
     }
 }

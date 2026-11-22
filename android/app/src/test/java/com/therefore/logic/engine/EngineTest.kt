@@ -348,10 +348,28 @@ class EngineTest {
         assertFalse(p("∃x(Fx ∧ ∀y(Fy → y = x))").eval(w))
     }
 
+    @Test fun statsSummariseHistory() {
+        fun a(grade: String, mistakes: Int, rules: String, bad: String) = com.therefore.logic.data.Attempt(
+            courseId = "ifthen", level = 1, date = "2026-11-20", grade = grade, stars = 3, score = 90, lines = 3, modelLines = 3,
+            mistakes = mistakes, hints = 0, seconds = 40, revealed = false, mode = "PRACTICE", rulesUsed = rules, mistakeRules = bad,
+            finishedAt = java.time.LocalDate.of(2026, 11, 20).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        )
+        val attempts = listOf(a("A", 0, "MP,MP,MT", ""), a("B", 2, "MP,DS", "DS,DS"), a("S", 0, "HS", ""))
+        val st = com.therefore.logic.data.Stats.compute(attempts, com.therefore.logic.data.ProgressRepository.compute(attempts, java.time.LocalDate.of(2026, 11, 22)), java.time.LocalDate.of(2026, 11, 22))
+        assertEquals(3, st.totalSolved)
+        assertEquals(30, st.perDay.size)
+        assertEquals(3, st.perDay.first { it.first == java.time.LocalDate.of(2026, 11, 20) }.second)
+        assertEquals(listOf("S" to 1, "A" to 1, "B" to 1, "C" to 0, "D" to 0), st.grades)
+        assertEquals("DS" to 2, st.trickyRules.first())
+        assertEquals("MP" to 3, st.favouriteRules.first())
+        assertEquals(8, st.mistakesByWeek.size)
+    }
+
     @Test fun streakCountsEitherDailyProof() {
-        fun attempt(course: String, date: String) = com.therefore.logic.data.Attempt(
+        fun at(date: String) = java.time.LocalDate.parse(date).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun attempt(course: String, date: String, finished: String = date) = com.therefore.logic.data.Attempt(
             courseId = course, level = 3, date = date, grade = "A", stars = 3, score = 95, lines = 4, modelLines = 4,
-            mistakes = 0, hints = 0, seconds = 60, revealed = false, finishedAt = 0, mode = "DAILY",
+            mistakes = 0, hints = 0, seconds = 60, revealed = false, finishedAt = at(finished), mode = "DAILY",
         )
         val today = java.time.LocalDate.of(2026, 11, 21)
         val prog = com.therefore.logic.data.ProgressRepository.compute(
@@ -360,6 +378,13 @@ class EngineTest {
         assertEquals(3, prog.streak)
         assertEquals(setOf("2026-11-20", "2026-11-21"), prog.predicateDays.keys)
         assertTrue(prog.courses.isEmpty())   // daily proofs don't count as course practice
+        // Catching up on a missed day earns a grade but doesn't count toward the streak.
+        val caughtUp = com.therefore.logic.data.ProgressRepository.compute(
+            listOf(attempt("daily", "2026-11-19", finished = "2026-11-21"), attempt("daily", "2026-11-21")), today,
+        )
+        assertEquals(1, caughtUp.streak)
+        assertFalse(caughtUp.days.getValue("2026-11-19").onTime)
+        assertTrue(caughtUp.days.getValue("2026-11-21").onTime)
     }
 
     @Test fun dailyPuzzleIsTheSameForTheSameSeed() {

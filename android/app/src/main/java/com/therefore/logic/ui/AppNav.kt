@@ -32,6 +32,7 @@ import com.therefore.logic.reminder.Reminders
 import com.therefore.logic.ui.screens.DailyScreen
 import com.therefore.logic.ui.screens.HomeScreen
 import com.therefore.logic.ui.screens.PredicateScreen
+import com.therefore.logic.ui.screens.StatsScreen
 import com.therefore.logic.ui.screens.GamesScreen
 import com.therefore.logic.ui.screens.GameId
 import com.therefore.logic.ui.screens.IslandScreen
@@ -58,6 +59,7 @@ private object Routes {
     const val RULES = "rules"
     const val PREDICATE = "predicate"
     const val GAMES = "games"
+    const val STATS = "stats"
     const val SETTINGS = "settings"
     const val COURSE = "course/{id}"
     const val LESSON = "lesson/{id}"
@@ -89,8 +91,8 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
     LaunchedEffect(openDaily) { if (openDaily) nav.navigate(Routes.DAILY) { launchSingleTop = true } }
 
     /** Resumes a matching puzzle in progress, or generates a new one, then opens the board. */
-    fun play(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null, fresh: Boolean = false) = scope.launch {
-        if (fresh || !vm.hasGame(courseId, mode, lessonId, level)) vm.start(courseId, mode, level, lessonId)
+    fun play(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null, fresh: Boolean = false, date: java.time.LocalDate = java.time.LocalDate.now()) = scope.launch {
+        if (fresh || !vm.hasGame(courseId, mode, lessonId, level, date)) vm.start(courseId, mode, level, lessonId, date)
         withContext(Dispatchers.Main.immediate) {
             val back = if (Curriculum.isDaily(courseId)) Routes.DAILY else Routes.course(courseId)
             nav.navigate(Routes.PLAY) { popUpTo(back); launchSingleTop = true }
@@ -123,13 +125,18 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                     onDaily = { nav.navigate(Routes.DAILY) { popUpTo(Routes.HOME) { saveState = true }; launchSingleTop = true } },
                     onCourse = { nav.navigate(Routes.course(it)) },
                     onSettings = { nav.navigate(Routes.SETTINGS) },
+                    onStats = { nav.navigate(Routes.STATS) },
                 )
             }
             composable(Routes.DAILY) {
-                DailyScreen(progress, inProgress = { id -> vm.hasGame(id, Mode.DAILY) }) { id -> play(id, Mode.DAILY) }
+                DailyScreen(progress, inProgress = { id, date -> vm.hasGame(id, Mode.DAILY, date = date) }) { id, date -> play(id, Mode.DAILY, date = date) }
             }
             composable(Routes.RULES) { RulesScreen() }
             composable(Routes.PREDICATE) { PredicateScreen(progress) { nav.navigate(Routes.course(it)) } }
+            composable(Routes.STATS) {
+                val attempts by container.progress.attempts.collectAsStateWithLifecycle(emptyList())
+                StatsScreen(com.therefore.logic.data.Stats.compute(attempts, progress, java.time.LocalDate.now()), progress) { nav.popBackStack() }
+            }
             composable(Routes.GAMES) { GamesScreen(gamesVm) { nav.navigate(it.route) } }
             composable(GameId.ISLAND.route) { IslandScreen(gamesVm) { nav.popBackStack() } }
             composable(GameId.QUIZ.route) { QuizScreen(gamesVm) { nav.popBackStack() } }
@@ -181,7 +188,10 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                 ResultScreen(
                     s,
                     onBack = { back() },
-                    onNext = { play(s.courseId, s.mode, if (s.mode == Mode.FREE) s.level else null, s.lessonId, fresh = true) },
+                    onNext = {
+                        play(s.courseId, s.mode, if (s.mode == Mode.FREE) s.level else null, s.lessonId, fresh = true,
+                            date = s.date?.let(java.time.LocalDate::parse) ?: java.time.LocalDate.now())
+                    },
                     onLesson = { back() },
                 )
             }
@@ -191,6 +201,9 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                     onBack = { nav.popBackStack() },
                     onPlainText = { v -> container.scope.launch { container.settings.setPlainText(v) } },
                     onTheme = { v: ThemeMode -> container.scope.launch { container.settings.setTheme(v) } },
+                    onAccent = { v -> container.scope.launch { container.settings.setAccent(v) } },
+                    onTextSize = { v -> container.scope.launch { container.settings.setTextSize(v) } },
+                    onStats = { nav.navigate(Routes.STATS) },
                     onHaptics = { v -> container.scope.launch { container.settings.setHaptics(v) } },
                     onReminder = { on, at ->
                         container.scope.launch { container.settings.setReminder(on, at) }

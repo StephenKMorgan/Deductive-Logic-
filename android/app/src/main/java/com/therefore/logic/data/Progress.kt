@@ -12,7 +12,8 @@ data class CourseStats(val solved: Int = 0, val best: String? = null) {
     val level: Int get() = minOf(5, 1 + solved / 2)
 }
 
-data class DayResult(val grade: String, val stars: Int) {
+/** [onTime]: solved on the puzzle's own day (only these count toward the streak). */
+data class DayResult(val grade: String, val stars: Int, val onTime: Boolean = true) {
     val studied get() = grade == Grades.REVEALED
 }
 
@@ -45,7 +46,14 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
 
     suspend fun current(): Progress = progress.first()
 
+    /** Every finished puzzle, oldest first (for the stats screen). */
+    val attempts: Flow<List<Attempt>> = dao.all()
+
     companion object {
+        /** The local date an attempt was finished on. */
+        fun finishedOn(a: Attempt): String =
+            java.time.Instant.ofEpochMilli(a.finishedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+
         fun compute(attempts: List<Attempt>, today: LocalDate): Progress {
             val courses = HashMap<String, CourseStats>()
             val days = HashMap<String, DayResult>()
@@ -54,11 +62,12 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
                 if (Curriculum.isDaily(a.courseId)) {
                     val map = if (a.courseId == Curriculum.DAILY_ID) days else predicateDays
                     val prev = map[a.date]
+                    val onTime = !a.revealed && finishedOn(a) == a.date
                     map[a.date] = when {
-                        prev == null -> DayResult(a.grade, a.stars)
+                        prev == null -> DayResult(a.grade, a.stars, onTime)
                         a.revealed -> prev
-                        prev.studied -> DayResult(a.grade, a.stars)
-                        else -> DayResult(Grades.better(a.grade, prev.grade), maxOf(a.stars, prev.stars))
+                        prev.studied -> DayResult(a.grade, a.stars, onTime)
+                        else -> DayResult(Grades.better(a.grade, prev.grade), maxOf(a.stars, prev.stars), prev.onTime || onTime)
                     }
                 } else if (!a.revealed && a.mode == Mode.PRACTICE.name) {
                     val prev = courses[a.courseId] ?: CourseStats()
@@ -66,14 +75,15 @@ class ProgressRepository(private val dao: AttemptDao, private val lessons: Lesso
                 }
             }
             // A day counts toward the streak if either daily proof was solved.
-            fun solvedOn(d: LocalDate) = listOf(days, predicateDays).any { m -> m[d.toString()]?.let { !it.studied } == true }
+            // A day counts toward the streak if either daily proof was solved on that day.
+            fun solvedOn(d: LocalDate) = listOf(days, predicateDays).any { m -> m[d.toString()]?.let { !it.studied && it.onTime } == true }
             var day = if (solvedOn(today)) today else today.minusDays(1)
             var streak = 0
             while (solvedOn(day)) { streak++; day = day.minusDays(1) }
             var best = 0
             var run = 0
             var prev: LocalDate? = null
-            val solvedDays = (days.filterValues { !it.studied }.keys + predicateDays.filterValues { !it.studied }.keys).toSet()
+            val solvedDays = (days.filterValues { !it.studied && it.onTime }.keys + predicateDays.filterValues { !it.studied && it.onTime }.keys).toSet()
             for (d in solvedDays.map(LocalDate::parse).sorted()) {
                 run = if (prev != null && prev.plusDays(1) == d) run + 1 else 1
                 best = maxOf(best, run)

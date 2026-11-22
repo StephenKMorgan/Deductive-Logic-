@@ -78,17 +78,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
     }
 
     /** Whether there's an unfinished puzzle of this kind to resume. */
-    fun hasGame(courseId: String, mode: Mode, lessonId: String? = null, level: Int? = null): Boolean {
+    fun hasGame(courseId: String, mode: Mode, lessonId: String? = null, level: Int? = null, date: LocalDate = LocalDate.now()): Boolean {
         val s = _state.value ?: return false
         if (s.done || s.courseId != courseId || s.mode != mode || s.lessonId != lessonId) return false
         if (level != null && s.level != level) return false
-        return mode != Mode.DAILY || s.date == LocalDate.now().toString()
+        return mode != Mode.DAILY || s.date == date.toString()
     }
 
     /** Generates a new puzzle. Practice uses the course level; free play uses the chosen level. */
-    suspend fun start(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null) {
+    /** Generates a new puzzle. [date] picks which day's daily proof (past days can be caught up on). */
+    suspend fun start(courseId: String, mode: Mode, level: Int? = null, lessonId: String? = null, date: LocalDate = LocalDate.now()) {
         val course = Curriculum.byId(courseId)
-        val today = LocalDate.now().toString()
+        val today = date.toString()
         val lesson = lessonId?.let { id -> course.lessons.firstOrNull { it.id == id } }
         val lvl = when (mode) {
             Mode.DAILY -> Curriculum.DAILY_LEVEL
@@ -116,6 +117,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
                     grade = r.grade, stars = r.stars, score = r.score, lines = r.yourLines, modelLines = r.modelLines,
                     mistakes = s.mistakes.size, hints = s.hints, seconds = r.seconds, revealed = s.revealed,
                     finishedAt = System.currentTimeMillis(), mode = s.mode.name,
+                    rulesUsed = s.lines.mapNotNull { it.rule?.abbr }.joinToString(","),
+                    mistakeRules = s.mistakes.joinToString(",") { it.rule.abbr },
                 ),
             )
         }

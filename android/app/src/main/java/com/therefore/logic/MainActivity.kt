@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = bar, navigationBarStyle = bar)
                 onDispose {}
             }
-            ThereforeTheme(settings.theme, settings.plainText) {
+            ThereforeTheme(settings.theme, settings.plainText, settings.accent, settings.textSize) {
                 ThereforeApp(game, settings, openDaily)
             }
         }

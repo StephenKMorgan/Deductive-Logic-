@@ -36,6 +36,10 @@ data class Attempt(
     val finishedAt: Long,
     /** PRACTICE, FREE or DAILY (see [Mode]). Only practice raises a course's level. */
     @ColumnInfo(defaultValue = "PRACTICE") val mode: String = Mode.PRACTICE.name,
+    /** Rules used in the proof, comma-separated (for the stats screen). */
+    @ColumnInfo(defaultValue = "") val rulesUsed: String = "",
+    /** The rule picked for each rejected line, comma-separated. */
+    @ColumnInfo(defaultValue = "") val mistakeRules: String = "",
 )
 
 /** A lesson the learner has finished at least once. */
@@ -85,7 +89,7 @@ interface SavedGameDao {
     suspend fun clear()
 }
 
-@Database(entities = [Attempt::class, SavedGame::class, LessonDone::class], version = 2, exportSchema = true)
+@Database(entities = [Attempt::class, SavedGame::class, LessonDone::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun attempts(): AttemptDao
     abstract fun savedGame(): SavedGameDao
@@ -101,7 +105,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 3: attempts record which rules were used and which ones mistakes were made with. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE attempts ADD COLUMN rulesUsed TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE attempts ADD COLUMN mistakeRules TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "therefore.db").addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "therefore.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

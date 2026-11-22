@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -35,6 +38,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,6 +94,7 @@ fun HomeScreen(
     onDaily: () -> Unit,
     onCourse: (String) -> Unit,
     onSettings: () -> Unit,
+    onStats: () -> Unit = {},
 ) {
     val p = LocalPalette.current
     val today = LocalDate.now().toString()
@@ -96,6 +104,7 @@ fun HomeScreen(
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             BrandHeader("∴", "Therefore", "Deductive logic proofs, one line at a time") {
+                androidx.compose.material3.TextButton(onClick = onStats) { Text("Stats") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings", tint = p.muted) }
             }
         }
@@ -198,71 +207,140 @@ fun PredicateScreen(progress: Progress, onCourse: (String) -> Unit) {
 }
 
 @Composable
-fun DailyScreen(progress: Progress, inProgress: (String) -> Boolean, onStart: (String) -> Unit) {
+fun DailyScreen(progress: Progress, inProgress: (String, LocalDate) -> Boolean, onStart: (String, LocalDate) -> Unit) {
     val p = LocalPalette.current
     val today = LocalDate.now()
+    var month by remember { mutableStateOf(java.time.YearMonth.from(today)) }
+    var selected by remember { mutableStateOf(today) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            BrandHeader("◷", "Daily Proofs", "${today.dayOfWeek.getDisplayName(DateStyle.FULL, Locale.getDefault())}, ${today.month.getDisplayName(DateStyle.FULL, Locale.getDefault())} ${today.dayOfMonth}")
-        }
+        item { BrandHeader("◷", "Daily Proofs", "${progress.streak} day streak" + if (progress.bestStreak > progress.streak) " · best ${progress.bestStreak}" else "") }
         item {
             Panel(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Eyebrow("Everyone gets the same proofs today")
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text("${progress.streak}", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = p.accent)
-                        Text(" day streak", Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.titleMedium)
-                        if (progress.bestStreak > progress.streak)
-                            Text("  · best ${progress.bestStreak}", Modifier.padding(bottom = 7.dp), color = p.muted)
-                    }
-                    Text("Solve either daily proof to keep your streak going.", style = MaterialTheme.typography.bodySmall, color = p.muted)
-                    WeekRow(today, null, progress.days, "∴")
-                    WeekRow(today, null, progress.predicateDays, "∀")
-                }
+                MonthCalendar(month, today, selected, progress, onMonth = { month = it }, onPick = { selected = it })
+            }
+        }
+        item {
+            val past = selected != today
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    if (past) selected.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d")) else "Today",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (past) Text("Catch-up solves earn a grade but don't count toward your streak.", style = MaterialTheme.typography.bodySmall, color = p.muted)
             }
         }
         item {
             DailyCard(
                 "Daily proof", "A mixed puzzle that can use any of the 18 rules.",
-                progress.days[today.toString()], inProgress(Curriculum.DAILY_ID),
-            ) { onStart(Curriculum.DAILY_ID) }
+                progress.days[selected.toString()], inProgress(Curriculum.DAILY_ID, selected), selected != today,
+            ) { onStart(Curriculum.DAILY_ID, selected) }
         }
         item {
             DailyCard(
                 "Daily predicate proof", "A puzzle with ∀ and ∃, using the quantifier rules.",
-                progress.predicateDays[today.toString()], inProgress(Curriculum.DAILY_PRED_ID),
-            ) { onStart(Curriculum.DAILY_PRED_ID) }
+                progress.predicateDays[selected.toString()], inProgress(Curriculum.DAILY_PRED_ID, selected), selected != today,
+            ) { onStart(Curriculum.DAILY_PRED_ID, selected) }
         }
     }
 }
 
-/** One week of daily results; [mark] says which daily it is. */
+/**
+ * A month of daily results. Each day shows two dots (∴ the daily proof, ∀ the predicate proof);
+ * a ring around the day means it was solved on the day itself and counts toward the streak.
+ */
 @Composable
-private fun WeekRow(today: LocalDate, label: String?, days: Map<String, com.therefore.logic.data.DayResult>, mark: String) {
+private fun MonthCalendar(
+    month: java.time.YearMonth, today: LocalDate, selected: LocalDate, progress: Progress,
+    onMonth: (java.time.YearMonth) -> Unit, onPick: (LocalDate) -> Unit,
+) {
     val p = LocalPalette.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(mark, Modifier.width(26.dp), fontFamily = Mono, fontWeight = FontWeight.Bold, color = p.muted)
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween) {
-            for (i in 6 downTo 0) {
-                val d = today.minusDays(i.toLong())
-                val r = days[d.toString()]
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (mark == "∴") Text(d.dayOfWeek.getDisplayName(DateStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                    val solved = r != null && !r.studied
-                    Box(
-                        Modifier.size(32.dp).clip(CircleShape)
-                            .background(if (r?.grade == "S") p.star else if (solved) p.accent else if (r != null) p.sunk else Color.Transparent)
-                            .border(1.5.dp, if (i == 0) p.accent else if (r == null) p.line else Color.Transparent, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(r?.grade ?: "", fontWeight = FontWeight.Bold, color = if (solved) p.onAccent else p.muted) }
+    val first = month.atDay(1)
+    val lead = first.dayOfWeek.value % 7 // Sunday first
+    val cells = (0 until lead).map { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onMonth(month.minusMonths(1)) }, enabled = month.isAfter(java.time.YearMonth.from(today).minusMonths(12))) {
+                Text("‹", fontSize = 26.sp, color = p.ink)
+            }
+            Text(
+                month.month.getDisplayName(DateStyle.FULL, Locale.getDefault()) + " " + month.year,
+                Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            IconButton(onClick = { onMonth(month.plusMonths(1)) }, enabled = month.isBefore(java.time.YearMonth.from(today))) {
+                Text("›", fontSize = 26.sp, color = if (month.isBefore(java.time.YearMonth.from(today))) p.ink else p.line)
+            }
+        }
+        Row {
+            listOf("S", "M", "T", "W", "T", "F", "S").forEach {
+                Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = p.muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+        cells.chunked(7).forEach { week ->
+            Row {
+                for (c in 0 until 7) {
+                    val d = week.getOrNull(c)
+                    Box(Modifier.weight(1f).height(54.dp).padding(2.dp), contentAlignment = Alignment.Center) {
+                        if (d != null) DayCell(d, today, selected, progress, onPick)
+                    }
                 }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            LegendDot(p.accent, "solved"); LegendDot(p.star, "S rank")
+            Box(Modifier.size(14.dp).border(2.dp, p.accent, CircleShape))
+            Text("solved on the day (streak)", style = MaterialTheme.typography.labelSmall, color = p.muted)
+        }
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = LocalPalette.current.muted)
+    }
+}
+
+@Composable
+private fun DayCell(d: LocalDate, today: LocalDate, selected: LocalDate, progress: Progress, onPick: (LocalDate) -> Unit) {
+    val p = LocalPalette.current
+    val future = d.isAfter(today)
+    val results = listOf(progress.days[d.toString()], progress.predicateDays[d.toString()])
+    val streakDay = results.any { it != null && !it.studied && it.onTime }
+    val isSel = d == selected
+    Column(
+        Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))
+            .background(if (isSel) p.accentSoft else Color.Transparent)
+            .border(if (streakDay) 2.dp else 0.dp, if (streakDay) p.accent else Color.Transparent, RoundedCornerShape(10.dp))
+            .clickable(enabled = !future) { onPick(d) }
+            .semantics {
+                contentDescription = "$d" + results.mapIndexed { i, r ->
+                    val name = if (i == 0) "daily proof" else "predicate proof"
+                    when { r == null -> ""; r.studied -> ", $name studied"; else -> ", $name grade ${r.grade}" }
+                }.joinToString("") + if (streakDay) ", solved on the day" else ""
+            },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "${d.dayOfMonth}", fontWeight = if (d == today) FontWeight.Bold else FontWeight.Normal,
+            color = when { future -> p.line; d == today -> p.accent; else -> p.ink },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            results.forEach { r ->
+                val color = when {
+                    r == null -> p.line.copy(alpha = if (future) 0f else 0.6f)
+                    r.studied -> p.muted
+                    r.grade == "S" -> p.star
+                    else -> p.accent
+                }
+                Box(Modifier.size(7.dp).clip(CircleShape).background(color))
             }
         }
     }
 }
 
 @Composable
-private fun DailyCard(title: String, about: String, result: com.therefore.logic.data.DayResult?, inProgress: Boolean, onStart: () -> Unit) {
+private fun DailyCard(title: String, about: String, result: com.therefore.logic.data.DayResult?, inProgress: Boolean, past: Boolean, onStart: () -> Unit) {
     val p = LocalPalette.current
     Panel(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -276,14 +354,15 @@ private fun DailyCard(title: String, about: String, result: com.therefore.logic.
             Text(
                 when {
                     result == null -> "Beat par (fewer lines than the model proof) with no mistakes or hints for a rare S rank."
-                    result.studied -> "You studied today's solution. A new one arrives tomorrow."
+                    result.studied -> "You studied the solution. Replay it any time."
                     result.grade == "S" -> "S rank today: a perfect proof."
                     else -> "Solved with grade ${result.grade}. Replay it to try for S; your best grade is kept."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Button(onClick = onStart, Modifier.fillMaxWidth()) {
-                Text(if (inProgress) "Resume" else if (result != null) "Replay" else "Start")
+            val label = if (inProgress) "Resume" else if (result != null) "Replay" else if (past) "Catch up" else "Start"
+            Button(onClick = onStart, Modifier.fillMaxWidth().semantics { contentDescription = "$label $title" }) {
+                Text(label)
             }
         }
     }

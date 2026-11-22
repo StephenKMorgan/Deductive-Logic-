@@ -9,6 +9,14 @@ import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -152,6 +160,9 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onPlainText: (Boolean) -> Unit,
     onTheme: (ThemeMode) -> Unit,
+    onAccent: (com.therefore.logic.data.AccentTheme) -> Unit,
+    onTextSize: (com.therefore.logic.data.TextSize) -> Unit,
+    onStats: () -> Unit,
     onHaptics: (Boolean) -> Unit,
     onReminder: (Boolean, Int) -> Unit,
     onReset: () -> Unit,
@@ -190,6 +201,32 @@ fun SettingsScreen(
                             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                                 SegmentedButton(!settings.plainText, { onPlainText(false) }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("¬ ∧ ∨ →", fontFamily = Mono) }
                                 SegmentedButton(settings.plainText, { onPlainText(true) }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("~ & v ->", fontFamily = Mono) }
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Color", style = MaterialTheme.typography.titleSmall)
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                val dark = p.bg.luminance() < 0.5f
+                                com.therefore.logic.data.AccentTheme.entries.forEach { a ->
+                                    val selected = settings.accent == a
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onAccent(a) }
+                                        .semantics { contentDescription = "${a.label} color${if (selected) ", selected" else ""}" }) {
+                                        androidx.compose.foundation.layout.Box(
+                                            Modifier.size(40.dp).clip(CircleShape).background(com.therefore.logic.ui.theme.accentSwatch(a, dark))
+                                                .border(if (selected) 3.dp else 0.dp, p.ink, CircleShape),
+                                            contentAlignment = Alignment.Center,
+                                        ) { if (selected) Text("✓", color = p.surface, fontWeight = FontWeight.Bold) }
+                                        Text(a.label, style = MaterialTheme.typography.labelSmall, color = p.muted)
+                                    }
+                                }
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Text size", style = MaterialTheme.typography.titleSmall)
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                com.therefore.logic.data.TextSize.entries.forEachIndexed { i, t ->
+                                    SegmentedButton(settings.textSize == t, { onTextSize(t) }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(t.label) }
+                                }
                             }
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -234,6 +271,7 @@ fun SettingsScreen(
                 }
             }
             item { SectionTitle("Your progress") }
+            item { androidx.compose.material3.Button(onClick = onStats, Modifier.fillMaxWidth()) { Text("See your stats and charts") } }
             item {
                 Panel {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

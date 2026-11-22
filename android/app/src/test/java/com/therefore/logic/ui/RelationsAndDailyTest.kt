@@ -91,10 +91,10 @@ class RelationsAndDailyTest {
 
         // The Daily tab now has two daily proofs.
         tap("Daily")
-        waitFor("Daily predicate proof")
+        rule.waitForIdle()
         shot("R5-daily-tab")
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Daily predicate proof"))
-        rule.onAllNodesWithText("Start")[1].performClick()
+        rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Start Daily predicate proof"))
+        rule.onNodeWithContentDescription("Start Daily predicate proof").performClick()
         waitFor("Par")
         shot("R6-daily-predicate")
     }
