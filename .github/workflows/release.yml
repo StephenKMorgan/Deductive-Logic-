@@ -41,21 +41,37 @@ jobs:
           echo "name=$V" >> "$GITHUB_OUTPUT"
           echo "code=$((MA * 10000 + MI * 100 + PA))" >> "$GITHUB_OUTPUT"
 
+      - name: Skip if this version is already published
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.name }}
+        run: |
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Version $V is already published; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v4
+        if: steps.exists.outputs.skip != 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.exists.outputs.skip != 'true'
 
       - name: Web app logic tests
+        if: steps.exists.outputs.skip != 'true'
         run: node tests/engine.test.js
 
       - name: Android tests
+        if: steps.exists.outputs.skip != 'true'
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build APK
+        if: steps.exists.outputs.skip != 'true'
         working-directory: android
         env:
           VERSION_NAME: ${{ steps.v.outputs.name }}
@@ -65,6 +81,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../therefore.apk
 
       - name: Publish the release
+        if: steps.exists.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.v.outputs.name }}
