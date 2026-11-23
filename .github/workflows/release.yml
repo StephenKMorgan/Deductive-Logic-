@@ -2,7 +2,7 @@ name: Publish release
 
 # Publishes a new version for download. Nothing is published until you run this.
 # Easiest way: GitHub → Actions → "Publish release" → Run workflow → type a version like 1.0.0.
-# (Pushing a tag like v1.0.0 does the same thing.)
+# Or: put the version in the RELEASE_VERSION file and push.
 # The APK always lands at:
 #   https://github.com/StephenKMorgan/Deductive-Logic-/releases/latest/download/therefore.apk
 
@@ -12,8 +12,9 @@ on:
       version:
         description: "Version number, like 1.0.0 (must be higher than the last release)"
         required: true
+  # Or change the number in RELEASE_VERSION and push: that publishes it from any branch.
   push:
-    tags: ["v*"]
+    paths: ["RELEASE_VERSION"]
 
 permissions:
   contents: write
@@ -30,7 +31,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = "workflow_dispatch" ]; then V="$INPUT_VERSION"; else V="$GITHUB_REF_NAME"; fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then V="$INPUT_VERSION"; else V="$(tr -d ' \n\r' < RELEASE_VERSION)"; fi
           V="${V#v}"
           if ! [[ "$V" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo "::error::Version must look like 1.0.0 (got '$V')"; exit 1

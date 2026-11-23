@@ -55,8 +55,8 @@ To run it locally: `python3 -m http.server` in this folder, then open http://loc
 **Updates keep your progress:** debug builds are signed with a fixed key (`android/app/therefore-debug.keystore`), so a newer APK installs over the old one. That key is only for sideloading; Google Play needs your own release key.
 
 **Download:** https://stephenkmorgan.github.io/therefore/ always has the latest release. To publish one, edit
-`RELEASE_NOTES.md`, then push a tag like `v3.1.0` (or, once the workflow is on the default branch, use Actions →
-"Publish release"). The version must be higher than the last one: `versionCode` = major×10000 + minor×100 + patch.
+`RELEASE_NOTES.md`, then put the new version (like `3.1.0`) in `RELEASE_VERSION` and push, or use Actions → "Publish release" once
+the workflow is on the default branch. The version must be higher than the last one: `versionCode` = major×10000 + minor×100 + patch.
 
 **Get an APK without installing anything:** every push runs the **Android APK** workflow. It runs the tests, builds the app, and uploads **therefore-debug-apk** plus the test **screenshots**. Open the run under the repo's **Actions** tab and download them from *Artifacts*. Unzip the APK onto your phone and open it; the first time, Android asks you to allow installs from that app (Files or Chrome).
 
