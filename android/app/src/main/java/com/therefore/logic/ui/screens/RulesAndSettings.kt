@@ -108,7 +108,7 @@ fun RulesScreen() {
         }
         item { SectionTitle("Rules of inference") }
         item { Text("These apply to whole lines only: from the lines on the left, you may write the line on the right.", style = MaterialTheme.typography.bodyMedium) }
-        items(Rule.entries.filter { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule && !it.isIdentityRule }) { RuleCard(it) }
+        items(Rule.entries.filter { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule && !it.isIdentityRule && !it.isSatRule }) { RuleCard(it) }
         item { TipBox("Not valid", "From P → Q and Q, concluding P (affirming the consequent). From P → Q and ¬P, concluding ¬Q (denying the antecedent).", warn = true) }
         item { SectionTitle("Replacement rules") }
         item { Text("Each side means the same thing, so you can swap one for the other in either direction, even inside part of a line.", style = MaterialTheme.typography.bodyMedium) }
@@ -127,6 +127,14 @@ fun RulesScreen() {
         items(Rule.entries.filter { it.isQuantifierRule }) { RuleCard(it) }
         item { SectionTitle("Identity") }
         items(Rule.entries.filter { it.isIdentityRule }) { RuleCard(it) }
+        item { SectionTitle("How computers do logic") }
+        item {
+            Text(
+                "A clause is letters or negated letters joined by ∨, like ¬P ∨ Q. SAT solvers turn everything into clauses and then need just one rule.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        items(Rule.entries.filter { it.isSatRule }) { RuleCard(it) }
         item { SectionTitle("How to write a proof") }
         item { Text("Number every line. The premises come first. Each new line names the rule you used and the line numbers it came from. You're done when the conclusion appears on its own line.", style = MaterialTheme.typography.bodyMedium) }
         item {

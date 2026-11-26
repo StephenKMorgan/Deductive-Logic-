@@ -146,6 +146,15 @@ fun HomeScreen(
             }
             CourseRow(i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
         }
+        item {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)) {
+                SectionTitle("How computers do logic")
+                Text("Programs called SAT solvers check logic at a scale no person could. Learn the shape they use, their one rule, and how they search.", style = MaterialTheme.typography.bodyMedium, color = p.muted)
+            }
+        }
+        itemsIndexed(Curriculum.computingCourses) { i, c ->
+            CourseRow(Curriculum.courses.size + i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
+        }
     }
 }
 

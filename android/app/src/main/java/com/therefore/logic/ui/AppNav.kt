@@ -141,6 +141,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
             composable(GameId.ISLAND.route) { IslandScreen(gamesVm) { nav.popBackStack() } }
             composable(GameId.QUIZ.route) { QuizScreen(gamesVm) { nav.popBackStack() } }
             composable(GameId.BOARD.route) { BoardScreen(gamesVm) { nav.popBackStack() } }
+            composable(GameId.SOLVER.route) { com.therefore.logic.ui.screens.SolverScreen(gamesVm) { nav.popBackStack() } }
             composable(Routes.COURSE) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 CourseScreen(

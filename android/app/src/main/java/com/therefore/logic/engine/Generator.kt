@@ -208,7 +208,7 @@ object Generator {
 
     /** Whether one standard rule gets from the premises straight to the conclusion. */
     private fun oneStep(premises: List<Formula>, conclusion: Formula): Boolean {
-        val rules = Rule.entries.filter { it.isStandard }
+        val rules = Rule.entries.filter { it.isStandard && !it.isSatRule }
         for (p in premises) if (rules.any { Checker.works(it, listOf(p), conclusion) }) return true
         for (p in premises) for (q in premises) if (p != q && rules.any { Checker.works(it, listOf(p, q), conclusion) }) return true
         return false
@@ -448,8 +448,113 @@ object Generator {
         return Puzzle(premises, p.conclusion, listOf(Step(f, Rule.QN, listOf(disguised))) + p.solution)
     }
 
+    // ---------------- Clause puzzles (the SAT course) ----------------
+
+    /** Turning a formula into clauses: written with A, B, C, which are swapped for random letters. */
+    private val CNF_PATTERNS = listOf(
+        Pattern(1, listOf("¬(A ∧ ¬B)"), "¬A ∨ B", listOf("¬A ∨ ¬¬B" to "1, DeM", "¬A ∨ B" to "2, DN")),
+        Pattern(1, listOf("A ∨ (B ∧ ¬C)"), "(A ∨ B) ∧ (A ∨ ¬C)", listOf("(A ∨ B) ∧ (A ∨ ¬C)" to "1, Dist")),
+        Pattern(2, listOf("A → (B ∧ C)"), "(¬A ∨ B) ∧ (¬A ∨ C)", listOf("¬A ∨ (B ∧ C)" to "1, Impl", "(¬A ∨ B) ∧ (¬A ∨ C)" to "2, Dist")),
+        Pattern(2, listOf("¬(A → B)"), "A ∧ ¬B", listOf("¬(¬A ∨ B)" to "1, Impl", "¬¬A ∧ ¬B" to "2, DeM", "A ∧ ¬B" to "3, DN")),
+        Pattern(3, listOf("(A ∧ B) → C"), "¬A ∨ (¬B ∨ C)", listOf("¬(A ∧ B) ∨ C" to "1, Impl", "(¬A ∨ ¬B) ∨ C" to "2, DeM", "¬A ∨ (¬B ∨ C)" to "3, Assoc")),
+        Pattern(3, listOf("¬(A ∨ B) ∨ C"), "(C ∨ ¬A) ∧ (C ∨ ¬B)", listOf("(¬A ∧ ¬B) ∨ C" to "1, DeM", "C ∨ (¬A ∧ ¬B)" to "2, Com", "(C ∨ ¬A) ∧ (C ∨ ¬B)" to "3, Dist")),
+        Pattern(4, listOf("A → ¬(B ∨ C)"), "(¬A ∨ ¬B) ∧ (¬A ∨ ¬C)", listOf("¬A ∨ ¬(B ∨ C)" to "1, Impl", "¬A ∨ (¬B ∧ ¬C)" to "2, DeM", "(¬A ∨ ¬B) ∧ (¬A ∨ ¬C)" to "3, Dist")),
+        Pattern(5, listOf("(A ∨ B) → C"), "(¬A ∨ C) ∧ (¬B ∨ C)", listOf("¬(A ∨ B) ∨ C" to "1, Impl", "(¬A ∧ ¬B) ∨ C" to "2, DeM", "C ∨ (¬A ∧ ¬B)" to "3, Com", "(C ∨ ¬A) ∧ (C ∨ ¬B)" to "4, Dist", "(¬A ∨ C) ∧ (C ∨ ¬B)" to "5, Com", "(¬A ∨ C) ∧ (¬B ∨ C)" to "6, Com")),
+    )
+
+    private fun attemptCnf(rng: Random, level: Int): Puzzle? {
+        val options = CNF_PATTERNS.filter { it.minLevel <= level && it.minLevel >= level - 2 }.ifEmpty { CNF_PATTERNS }
+        val pat = options[rng.nextInt(options.size)]
+        val letters = "PQRS".toList().shuffled(rng)
+        fun map(t: String) = t.map { when (it) { 'A' -> letters[0]; 'B' -> letters[1]; 'C' -> letters[2]; else -> it } }.joinToString("")
+        val premises = pat.premises.map { Parser.parseOrNull(map(it)) ?: return null }
+        val lines = premises.toMutableList()
+        val steps = pat.proof.map { (fs, just) ->
+            val parts = just.split(",").map { it.trim() }
+            val formula = Parser.parseOrNull(map(fs)) ?: return null
+            Step(formula, Rule.valueOf(parts.last()), parts.dropLast(1).map { lines[it.toInt() - 1] }).also { lines += formula }
+        }
+        return Puzzle(premises, Parser.parseOrNull(map(pat.conclusion)) ?: return null, steps).takeIf(::verify)
+    }
+
+    /**
+     * A resolution puzzle, built backward like the others: start from the clause to prove, split it into two
+     * clauses that resolve to it on a new letter, and repeat. The leaves are the premises. From level 3 one
+     * premise is written as a conditional or a negated "and", so it has to be put in clause form first.
+     */
+    private fun attemptResolution(rng: Random, level: Int): Puzzle? {
+        val letters = "PQRSTU".toList()
+        val used = HashSet<Char>()
+        fun letter(of: Formula) = ((of as? Formula.Not)?.a ?: of).let { (it as Formula.Atom).v }
+        fun fresh(exclude: Set<Char>): Char? {
+            val ok = letters.filter { it !in exclude }
+            if (ok.isEmpty()) return null
+            val unused = ok.filter { it !in used }
+            return (if (unused.isNotEmpty()) unused else ok).let { it[rng.nextInt(it.size)] }.also { used += it }
+        }
+        fun lit(c: Char) = if (rng.nextDouble() < 0.4) not(atom(c)) else atom(c)
+
+        class Node(var lits: List<Formula>, var kids: Pair<Node, Node>? = null)
+        val root = Node(List(if (rng.nextBoolean()) 1 else 2) { 0 }.fold(emptyList()) { acc, _ ->
+            acc + lit(fresh(acc.map(::letter).toSet()) ?: return null)
+        })
+        val leaves = mutableListOf(root)
+        val wanted = (level + rng.nextInt(2)).coerceIn(1, 5)
+        repeat(wanted) {
+            // Prefer extending recent leaves, which makes chains rather than flat fans.
+            val leaf = leaves[maxOf(0, leaves.size - 1 - rng.nextInt(minOf(2, leaves.size)))]
+            val x = fresh(leaf.lits.map(::letter).toSet()) ?: return null
+            val left = ArrayList<Formula>(); val right = ArrayList<Formula>()
+            leaf.lits.forEach { if (rng.nextBoolean()) left += it else right += it }
+            val plainLeft = rng.nextBoolean()
+            val l = Node(left + (if (plainLeft) atom(x) else not(atom(x))))
+            val r = Node(right + (if (plainLeft) not(atom(x)) else atom(x)))
+            if (l.lits.size > 3 || r.lits.size > 3) return null
+            leaf.kids = l to r
+            leaves.remove(leaf); leaves += listOf(l, r).shuffled(rng)
+        }
+        if (leaves.size !in 2..6) return null
+        // Every clause in the tree must be different, or the puzzle has shortcuts.
+        val all = ArrayList<Node>()
+        fun collect(n: Node) { all += n; n.kids?.let { collect(it.first); collect(it.second) } }
+        collect(root)
+        if (all.map { it.lits.toSet() }.distinct().size != all.size) return null
+
+        // Optionally disguise one two-literal premise, putting its literals in the order Impl/DeM produce.
+        var disguise: Pair<Node, Formula>? = null
+        if (level >= 3 && rng.nextDouble() < 0.7) {
+            val cand = leaves.filter { n -> n.lits.size == 2 && n.lits.any { it is Formula.Not } }
+            if (cand.isNotEmpty()) {
+                val n = cand[rng.nextInt(cand.size)]
+                n.lits = n.lits.sortedBy { if (it is Formula.Not) 0 else 1 }
+                val (p, q) = n.lits
+                disguise = n to if (q is Formula.Not) not(Formula.Bin(Op.AND, (p as Formula.Not).a, q.a)) else Formula.Bin(Op.IMP, (p as Formula.Not).a, q)
+            }
+        }
+        fun formula(n: Node) = n.lits.reduce { a, b -> or(a, b) }
+
+        val steps = ArrayList<Step>()
+        disguise?.let { (n, d) -> steps += Step(formula(n), if (d is Formula.Not) Rule.DeM else Rule.Impl, listOf(d)) }
+        fun emit(n: Node) {
+            val (a, b) = n.kids ?: return
+            emit(a); emit(b)
+            steps += Step(formula(n), Rule.Res, listOf(formula(a), formula(b)))
+        }
+        emit(root)
+        val premises = leaves.map { if (it == disguise?.first) disguise!!.second else formula(it) }
+        val conclusion = formula(root)
+        if (conclusion in premises || !satisfiable(premises)) return null
+        return Puzzle(premises, conclusion, steps).takeIf(::verify)
+    }
+
     fun generate(spec: Spec, level: Int, seed: Long): Puzzle {
         val rng = Random(seed)
+        if (spec.patterns == "resolution") {
+            // Free play on the clause-form lesson practises conversions; everything else practises resolution.
+            val cnfOnly = spec.focus.isNotEmpty() && Rule.Res !in spec.focus
+            repeat(3000) { i -> (if (cnfOnly) attemptCnf(rng, level) else attemptResolution(rng, if (i < 400) level else 1))?.let { return it } }
+            error("No resolution puzzle verified")
+        }
         if (spec.patterns != null) {
             repeat(200) { attemptPattern(spec, rng, level)?.let { return it } }
             error("No ${spec.patterns} pattern verified")

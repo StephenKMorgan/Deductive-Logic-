@@ -279,6 +279,7 @@ object Proofs {
             Rule.EI -> "Line ${l[0]} says something fits. Give that something a new name that hasn't been used yet, and drop the ∃."
             Rule.UG -> "Line ${l[0]} was shown for an arbitrary x, with nothing special assumed about it, so it holds for everything: add ∀."
             Rule.QN -> "Quantifier Negation moves the ¬ across the quantifier and flips ∀ and ∃, turning line ${l[0]} into this equivalent form."
+            Rule.Res -> "Line ${l[0]} and line ${l[1]} disagree about one letter. Whichever way it goes, one of the leftovers must hold, so cancel the letter and its negation and join what's left."
             Rule.IdR -> "Everything is identical to itself, so this line needs no citation."
             Rule.IdS -> "Identity works both ways: if a = b, then b = a."
             Rule.Id -> "Lines ${l[0]} and ${l[1]} name the same thing, so one name can replace the other."

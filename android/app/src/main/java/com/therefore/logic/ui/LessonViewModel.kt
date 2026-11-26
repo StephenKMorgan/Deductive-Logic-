@@ -7,6 +7,7 @@ import com.therefore.logic.TheApp
 import com.therefore.logic.content.Curriculum
 import com.therefore.logic.content.LessonDef
 import com.therefore.logic.content.LessonStep
+import com.therefore.logic.content.SolverGoal
 import com.therefore.logic.content.TableGoal
 import com.therefore.logic.content.WorldGoal
 import com.therefore.logic.engine.World
@@ -39,6 +40,8 @@ data class StepState(
     /** Two-place relations: the ordered pairs (row thing, column thing) that are on. */
     val rels: Map<Char, Set<Pair<Int, Int>>> = emptyMap(),
     val worldsSeen: Set<String> = emptySet(),
+    /** The solver board (DPLL by hand). */
+    val solver: com.therefore.logic.games.SolverState? = null,
     /** Guided / practice proofs. */
     val board: GameState? = null,
     val coachIndex: Int = 0,
@@ -81,6 +84,7 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             val rels = arity.filterValues { it == 2 }.keys.associateWith { emptySet<Pair<Int, Int>>() }
             evaluateWorld(step, StepState(props = props, rels = rels, worldsSeen = setOf(worldKey(props, rels))))
         }
+        is LessonStep.SolverStep -> StepState(solver = com.therefore.logic.games.SolverState(com.therefore.logic.games.Cnf.parse(step.clauses)))
         is LessonStep.Guided -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
         is LessonStep.Practice -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
     }
@@ -94,6 +98,7 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             TableGoal.FALSE_ROW -> !fs[0].eval(st.values)
             TableGoal.COUNTEREXAMPLE -> fs.dropLast(1).all { it.eval(st.values) } && !fs.last().eval(st.values)
             TableGoal.ALL_ROWS -> st.visited.size == rows
+            TableGoal.ALL_TRUE -> fs.all { it.eval(st.values) }
         }
         val found = st.found || hit
         return st.copy(found = found, complete = found)
@@ -150,6 +155,37 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         val st = evaluateTable(step, s.step.copy(values = values, visited = s.step.visited + mask(values)))
         if (st.found && !s.step.found) c.haptics.solved()
         _state.value = s.copy(step = st)
+    }
+
+    // ----- The solver board -----
+
+    private fun solver(f: (com.therefore.logic.games.SolverState) -> com.therefore.logic.games.SolverState) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.SolverStep ?: return
+        val before = s.step.solver ?: return
+        if (s.step.complete) return
+        val after = f(before)
+        if (after == before) return
+        val met = when (step.goal) {
+            SolverGoal.SATISFY -> after.solved && (step.maxGuesses == null || after.guesses <= step.maxGuesses)
+            SolverGoal.REFUTE -> after.unsat
+        }
+        when {
+            met -> c.haptics.solved()
+            after.conflict != null && before.conflict == null -> c.haptics.reject()
+            else -> c.haptics.key()
+        }
+        _state.value = s.copy(step = s.step.copy(solver = after, complete = met))
+    }
+
+    fun solverGuess(v: Int, value: Boolean) = solver { com.therefore.logic.games.Solver.guess(it, v, value) }
+    fun solverForce(i: Int) = solver { com.therefore.logic.games.Solver.force(it, i) }
+    fun solverPropagate() = solver { com.therefore.logic.games.Solver.propagate(it) }
+    fun solverBacktrack() = solver { com.therefore.logic.games.Solver.backtrack(it) }
+    fun solverReset() {
+        val s = _state.value ?: return
+        if (s.step.complete) return
+        _state.value = s.copy(step = initial(currentStep))
     }
 
     fun pick(option: Int) {

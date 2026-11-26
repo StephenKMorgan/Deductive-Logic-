@@ -15,6 +15,15 @@ enum class TableGoal {
     COUNTEREXAMPLE,
     /** Visit every row (used to show that formulas always agree, or that no counterexample exists). */
     ALL_ROWS,
+    /** Find a row where every formula is true (the set is satisfiable). */
+    ALL_TRUE,
+}
+
+enum class SolverGoal {
+    /** Satisfy every clause. */
+    SATISFY,
+    /** Show that no assignment works: backtrack until no guess is left. */
+    REFUTE,
 }
 
 enum class WorldGoal {
@@ -60,6 +69,20 @@ sealed interface LessonStep {
         val goal: WorldGoal,
         /** Label the formulas as premises and a conclusion. */
         val argument: Boolean = false,
+        val success: String,
+    ) : LessonStep
+
+    /**
+     * The solver board: guess letters, set forced ones, backtrack on conflicts (the DPLL algorithm by hand).
+     * [propagateAll] offers the button that sets every forced letter at once; [maxGuesses] caps the guesses allowed.
+     */
+    data class SolverStep(
+        override val title: String,
+        val prompt: String,
+        val clauses: List<String>,
+        val goal: SolverGoal,
+        val propagateAll: Boolean,
+        val maxGuesses: Int? = null,
         val success: String,
     ) : LessonStep
 

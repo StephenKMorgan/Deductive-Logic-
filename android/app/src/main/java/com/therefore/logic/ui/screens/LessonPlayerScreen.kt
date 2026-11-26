@@ -124,6 +124,7 @@ fun LessonPlayerScreen(
                 is LessonStep.Quiz -> QuizStep(vm, step, s.step)
                 is LessonStep.Table -> TableStep(vm, step, s.step)
                 is LessonStep.WorldStep -> WorldExplorer(vm, step, s.step)
+                is LessonStep.SolverStep -> SolverLessonStep(vm, step, s.step)
                 is LessonStep.Guided -> BoardStep(vm, s.step, s.stepIndex == total - 1, coachFor(step, s.step), step.success)
                 is LessonStep.Practice -> BoardStep(vm, s.step, s.stepIndex == total - 1, step.prompt, "Proof complete. Nicely done.")
             }
@@ -153,7 +154,7 @@ private fun ReadStep(step: LessonStep.Read) {
         step.example?.let { ex ->
             Panel {
                 Ledger(
-                    ex.lines.mapIndexed { i, (fs, j) -> LedgerRow(fs, j, premise = j == "Premise", depth = ex.depths.getOrElse(i) { 0 }) },
+                    ex.lines.mapIndexed { i, (fs, j) -> LedgerRow(fs, j, premise = j.startsWith("Premise") || j.startsWith("Negated"), depth = ex.depths.getOrElse(i) { 0 }) },
                     ex.conclusion,
                 )
             }
@@ -251,6 +252,36 @@ private fun TableStep(vm: LessonViewModel, step: LessonStep.Table, st: StepState
         if (st.found) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
         else if (step.goal == TableGoal.COUNTEREXAMPLE && st.visited.size > 1)
             Text("Keep going: you need every premise TRUE and the conclusion FALSE at the same time.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+    }
+}
+
+@Composable
+private fun SolverLessonStep(vm: LessonViewModel, step: LessonStep.SolverStep, st: StepState) {
+    val p = LocalPalette.current
+    val solver = st.solver ?: return
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Eyebrow(if (step.goal == com.therefore.logic.content.SolverGoal.REFUTE) "Prove it's unsatisfiable" else "Satisfy every clause")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        if (step.maxGuesses != null) Text(
+            if (step.maxGuesses == 0) "Allowed guesses: none" else "Allowed guesses: ${step.maxGuesses}",
+            style = MaterialTheme.typography.bodySmall, color = p.muted,
+        )
+        com.therefore.logic.ui.components.SolverBoard(
+            solver, step.propagateAll,
+            onGuess = vm::solverGuess, onForce = vm::solverForce, onPropagate = vm::solverPropagate,
+            onBacktrack = vm::solverBacktrack, onReset = vm::solverReset,
+        )
+        val tooMany = step.maxGuesses != null && solver.guesses > step.maxGuesses
+        when {
+            st.complete -> Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
+            tooMany -> Panel(color = p.hintSoft, border = false) {
+                Text(
+                    if (step.maxGuesses == 0) "This one needs no guesses: everything can be forced. Press Start over and use only the \"forced\" tags."
+                    else "That's ${solver.guesses} guesses; this one needs only ${step.maxGuesses}. Press Start over, guess once, then propagate before guessing again.",
+                    color = p.ink,
+                )
+            }
+        }
     }
 }
 

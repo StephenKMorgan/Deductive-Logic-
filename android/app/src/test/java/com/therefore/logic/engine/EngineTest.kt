@@ -1,6 +1,10 @@
 package com.therefore.logic.engine
 
 import com.therefore.logic.data.Stats
+import com.therefore.logic.content.SolverGoal
+import com.therefore.logic.games.Cnf
+import com.therefore.logic.games.Solver
+import com.therefore.logic.games.SolverState
 
 import com.therefore.logic.content.Curriculum
 import com.therefore.logic.content.LessonStep
@@ -80,12 +84,12 @@ class EngineTest {
     }
 
     @Test fun lessonExamplesAreValidProofs() {
-        val examples = Curriculum.courses.flatMap { it.lessons }.flatMap { it.steps }.filterIsInstance<LessonStep.Read>().mapNotNull { it.example }
+        val examples = Curriculum.allCourses.flatMap { it.lessons }.flatMap { it.steps }.filterIsInstance<LessonStep.Read>().mapNotNull { it.example }
         for (ex in examples) {
             val ls = ArrayList<Formula>()
             ex.lines.forEachIndexed { i, (f, j) ->
                 val formula = p(f)
-                if (j != "Premise") {
+                if (!j.startsWith("Premise") && !j.startsWith("Negated")) {
                     val parts = j.split(",").map { it.trim() }
                     val rule = Rule.valueOf(parts.last())
                     val r = if (rule.isStandard) Checker.check(rule, parts.dropLast(1).map { ls[it.toInt() - 1] }, formula).ok else true
@@ -236,6 +240,93 @@ class EngineTest {
         // Commutation on a line with a free variable, and inside a quantifier.
         assertTrue(Checker.check(Rule.Com, listOf(p("~Fx & Gx")), p("Gx & ~Fx")).ok)
         assertTrue(Checker.check(Rule.Com, listOf(p("∀x(~Fx & Gx)")), p("∀x(Gx & ~Fx)")).ok)
+    }
+
+    @Test fun resolution() {
+        fun res(a: String, b: String, r: String) = Checker.check(Rule.Res, listOf(p(a), p(b)), p(r))
+        assertTrue(res("P v Q", "~P v R", "Q v R").ok)
+        assertTrue("order inside a clause doesn't matter", res("P v Q", "~P v R", "R v Q").ok)
+        assertTrue("either citation order", res("~P v R", "P v Q", "Q v R").ok)
+        assertTrue("unit clauses", res("P", "~P v Q", "Q").ok)
+        assertTrue("several literals on each side", res("(P v Q) v S", "~Q v R", "P v (S v R)").ok)
+        val two = res("P v Q", "~P v ~Q", "P v ~P")
+        assertTrue(two.ok)                                   // resolving on Q is fine (the result is just useless)
+        assertFalse(res("P v Q", "~R v S", "Q v S").ok)       // nothing to cancel
+        assertFalse(res("P -> Q", "P", "Q").ok)               // not clauses
+        assertTrue(res("P -> Q", "P", "Q").message.contains("clauses"))
+        assertFalse(res("P", "~P", "Q").ok)                  // a clash leaves nothing
+        assertTrue(res("P", "~P", "Q").message.contains("Conj"))
+        // Resolution never shows up as an "also correct" suggestion outside its course.
+        assertEquals(null, Checker.check(Rule.MP, listOf(p("P"), p("~P v Q")), p("Q")).alt)
+    }
+
+    @Test fun satCoursePuzzles() {
+        val c = Curriculum.byId("sat")
+        val cnfFocus = c.specFor(c.lessons.first { it.id == "sat-2" })
+        for ((spec, label) in listOf(c.spec to "resolution", cnfFocus to "clause form")) for (level in 1..5) for (seed in 1..25) {
+            val puzzle = Generator.generate(spec, level, seed * 31L + level)
+            val used = puzzle.solution.map { it.rule }.toSet()
+            assertTrue("$label L$level uses course rules: $used", c.spec.rules.containsAll(used))
+            if (label == "resolution") assertTrue("$label uses Res", Rule.Res in used) else assertFalse(Rule.Res in used)
+            val lines = ArrayList<ProofLine>()
+            for (n in Proofs.numbered(puzzle)) {
+                if (n.rule != null) {
+                    val r = Proofs.checkLine(lines, n.rule!!, n.cites, n.formula, puzzle.conclusion)
+                    assertTrue("$label L$level ${n.formula} by ${n.rule}: ${r.message}", r.ok)
+                }
+                lines += n.line
+            }
+            assertEquals(puzzle.conclusion, lines.last().formula)
+            assertTrue("$label L$level hints solve it", solveWithHints(puzzle))
+            assertTrue(Curriculum.playRules(c).containsAll(used))
+        }
+        // Higher levels sometimes start from a premise that isn't a clause yet.
+        assertTrue((1..30).any { s -> Generator.generate(c.spec, 4, s.toLong()).solution.any { it.rule == Rule.Impl || it.rule == Rule.DeM } })
+    }
+
+    @Test fun solverFindsAnswersAndProvesUnsatisfiable() {
+        val unsat = Cnf.parse(listOf("P ∨ Q", "P ∨ ¬Q", "¬P ∨ R", "¬P ∨ ¬R"))
+        var s = SolverState(unsat)
+        assertEquals(s, Solver.backtrack(s))                 // no conflict, nothing to undo
+        s = Solver.propagate(Solver.guess(s, 0, true))
+        assertNotNull(s.conflict)
+        assertEquals(s, Solver.guess(s, 1, true))            // no guessing on top of a conflict
+        s = Solver.propagate(Solver.backtrack(s))
+        assertNotNull(s.conflict)
+        s = Solver.backtrack(s)
+        assertTrue(s.unsat)
+        // On random boards the solver's verdict always matches a brute-force check.
+        val rng = kotlin.random.Random(5)
+        repeat(150) { i ->
+            val cnf = Solver.board(i % 20, rng)
+            var g = Solver.propagate(SolverState(cnf))
+            var steps = 0
+            while (!g.finished && steps++ < 1000) {
+                g = if (g.conflict != null) Solver.propagate(Solver.backtrack(g))
+                else Solver.propagate(Solver.guess(g, cnf.letters.indices.first { it !in g.values }, true))
+            }
+            assertTrue(g.finished)
+            assertEquals("board $i", Solver.satisfiable(cnf), g.solved)
+            assertTrue(Solver.par(cnf) >= 1)
+        }
+    }
+
+    @Test fun solverLessonStepsCanBeCompleted() {
+        val steps = Curriculum.allCourses.flatMap { it.lessons }.flatMap { it.steps }.filterIsInstance<LessonStep.SolverStep>()
+        assertEquals(4, steps.size)
+        for (step in steps) {
+            val cnf = Cnf.parse(step.clauses)
+            assertEquals(step.goal == SolverGoal.SATISFY, Solver.satisfiable(cnf))
+            // Play it the way the lesson asks: propagate, guess P true when stuck, backtrack on conflicts.
+            var s = Solver.propagate(SolverState(cnf))
+            var n = 0
+            while (!s.finished && n++ < 100) {
+                s = if (s.conflict != null) Solver.propagate(Solver.backtrack(s))
+                else Solver.propagate(Solver.guess(s, cnf.letters.indices.first { it !in s.values }, true))
+            }
+            if (step.goal == SolverGoal.SATISFY) assertTrue(step.title, s.solved) else assertTrue(step.title, s.unsat)
+            step.maxGuesses?.let { assertTrue("${step.title}: ${s.guesses} guesses", s.guesses <= it) }
+        }
     }
 
     @Test fun contradictionsAreFlagged() {

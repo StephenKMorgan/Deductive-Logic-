@@ -71,8 +71,11 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
     val p = LocalPalette.current
     val c = Curriculum.byId(courseId)
     val stats = progress.course(courseId)
-    val track = if (c.track == com.therefore.logic.content.Track.PREDICATE) Curriculum.predicateCourses else Curriculum.courses
-    val n = track.indexOf(c) + 1
+    val n = when (c.track) {
+        com.therefore.logic.content.Track.PREDICATE -> Curriculum.predicateCourses.indexOf(c) + 1
+        com.therefore.logic.content.Track.COMPUTING -> Curriculum.courses.size + Curriculum.computingCourses.indexOf(c) + 1
+        else -> Curriculum.courses.indexOf(c) + 1
+    }
     // Free play dialog: which lesson (null = whole course).
     var freePlayFor by rememberSaveable { mutableStateOf<String?>(null) }
     var freePlayOpen by rememberSaveable { mutableStateOf(false) }
@@ -86,6 +89,7 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
                     Text(
                         when {
                             c.track == com.therefore.logic.content.Track.PREDICATE -> "Predicate course $n"
+                            c.track == com.therefore.logic.content.Track.COMPUTING -> "Computer logic · course $n"
                             c.advanced -> "Advanced course $n"
                             else -> "Course $n"
                         },

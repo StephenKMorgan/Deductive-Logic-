@@ -42,7 +42,10 @@ data class BoardState(val board: Board, val switches: Map<Char, Boolean>, val mo
     val minMoves get() = board.solution.count { it.value }
 }
 
-/** Runs the three games in the Games tab. */
+/** A Solver game board, with the guesses a sensible solver would need. */
+data class SolverGame(val state: com.therefore.logic.games.SolverState, val par: Int, val satisfiable: Boolean)
+
+/** Runs the games in the Games tab. */
 class GamesViewModel(app: Application) : AndroidViewModel(app) {
     private val c = (app as TheApp).container
     private val rng = Random(System.nanoTime())
@@ -54,6 +57,9 @@ class GamesViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _quiz = MutableStateFlow(QuizState())
     val quiz: StateFlow<QuizState> = _quiz.asStateFlow()
+
+    private val _solver = MutableStateFlow<SolverGame?>(null)
+    val solver: StateFlow<SolverGame?> = _solver.asStateFlow()
 
     private val _board = MutableStateFlow<BoardState?>(null)
     val board: StateFlow<BoardState?> = _board.asStateFlow()
@@ -129,6 +135,43 @@ class GamesViewModel(app: Application) : AndroidViewModel(app) {
     fun leaveQuiz() {
         timer?.cancel()
         _quiz.value = QuizState()
+    }
+
+    // ----- Solver -----
+
+    fun newSolver() = viewModelScope.launch {
+        val solved = stats.first().solverSolved
+        val g = withContext(Dispatchers.Default) {
+            val cnf = com.therefore.logic.games.Solver.board(solved, rng)
+            SolverGame(com.therefore.logic.games.SolverState(cnf), com.therefore.logic.games.Solver.par(cnf), com.therefore.logic.games.Solver.satisfiable(cnf))
+        }
+        _solver.value = g
+    }
+
+    private fun solverMove(f: (com.therefore.logic.games.SolverState) -> com.therefore.logic.games.SolverState) {
+        val g = _solver.value ?: return
+        val before = g.state
+        val after = f(before)
+        if (after == before) return
+        _solver.value = g.copy(state = after)
+        when {
+            after.finished -> {
+                c.haptics.solved()
+                viewModelScope.launch { c.games.solver(withinPar = after.guesses <= g.par) }
+            }
+            after.conflict != null && before.conflict == null -> c.haptics.reject()
+            else -> c.haptics.key()
+        }
+    }
+
+    fun solverGuess(v: Int, value: Boolean) = solverMove { com.therefore.logic.games.Solver.guess(it, v, value) }
+    fun solverForce(i: Int) = solverMove { com.therefore.logic.games.Solver.force(it, i) }
+    fun solverPropagate() = solverMove { com.therefore.logic.games.Solver.propagate(it) }
+    fun solverBacktrack() = solverMove { com.therefore.logic.games.Solver.backtrack(it) }
+    fun solverReset() {
+        val g = _solver.value ?: return
+        if (g.state.finished) return
+        _solver.value = g.copy(state = com.therefore.logic.games.SolverState(g.state.cnf))
     }
 
     // ----- Switchboard -----

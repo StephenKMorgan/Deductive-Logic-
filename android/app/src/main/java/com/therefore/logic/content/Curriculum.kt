@@ -4,6 +4,7 @@ import com.therefore.logic.content.LessonStep.Guided
 import com.therefore.logic.content.LessonStep.Practice
 import com.therefore.logic.content.LessonStep.Quiz
 import com.therefore.logic.content.LessonStep.Read
+import com.therefore.logic.content.LessonStep.SolverStep
 import com.therefore.logic.content.LessonStep.Table
 import com.therefore.logic.content.LessonStep.WorldStep
 import com.therefore.logic.engine.Lift
@@ -17,7 +18,7 @@ import com.therefore.logic.engine.Rule
 import com.therefore.logic.engine.Rule.*
 import com.therefore.logic.engine.Spec
 
-enum class Track { PROPOSITIONAL, PREDICATE }
+enum class Track { PROPOSITIONAL, PREDICATE, COMPUTING }
 
 data class Course(
     val id: String,
@@ -1147,6 +1148,219 @@ object Curriculum {
         ),
     )
 
+    // ---------------- How computers do logic: SAT ----------------
+
+    private val satLesson = LessonDef(
+        "sat-1", "Can it all be true?", "Satisfiable, unsatisfiable, and why validity is the same question.", emptyList(),
+        listOf(
+            Read(
+                "One question",
+                listOf(
+                    "A SAT solver is a program that answers one question: can these statements all be true at the same time?",
+                    "If they can, the set is satisfiable, and the solver hands back a way: a true or false value for each letter. If they can't, the set is unsatisfiable.",
+                    "That sounds small, but a huge amount of logic comes down to it, including every argument you've proved in this app.",
+                ),
+            ),
+            Table(
+                "Explore", "Find a row where all three statements are true at once.",
+                listOf("P ∨ Q", "¬P ∨ R", "¬Q ∨ ¬R"), TableGoal.ALL_TRUE,
+                success = "Satisfiable. A row like this is exactly what a solver hands back as its answer: proof that the statements can all be true.",
+            ),
+            Table(
+                "Explore", "Now these three. Try every row: is there one where all of them are true?",
+                listOf("P ∨ Q", "¬P", "¬Q"), TableGoal.ALL_ROWS,
+                success = "No row works: when ¬P and ¬Q are both true, P ∨ Q is false. This set is unsatisfiable.",
+            ),
+            Read(
+                "Validity is SAT in disguise",
+                listOf(
+                    "An argument is valid when there's no way for the premises to be true and the conclusion false.",
+                    "So add the negation of the conclusion to the premises and ask a solver. Unsatisfiable means no counterexample exists: the argument is valid. Satisfiable means the solver has found a counterexample.",
+                ),
+            ),
+            Quiz(
+                "Check", "P → Q, P ∴ Q is valid. Which set is unsatisfiable?",
+                listOf("P → Q,  P,  Q", "P → Q,  P,  ¬Q", "P → Q,  ¬P,  Q"), 1,
+                "Premises plus the negated conclusion, ¬Q. If those can't all be true, the premises can't be true with the conclusion false, which is what valid means.",
+            ),
+            Read(
+                "Why not check every row?",
+                listOf(
+                    "A truth table doubles with every letter. 3 letters give 8 rows and 10 give 1,024. A chip design or an airline schedule can have a million letters, and 300 letters already give more rows than there are atoms in the universe.",
+                    "Solvers win by being clever instead: they put every statement into one standard shape, then follow forced moves instead of trying everything. The rest of this course shows how.",
+                ),
+            ),
+            Quiz(
+                "Check", "How many rows does a truth table for 20 letters have?",
+                listOf("40", "400", "About a million"), 2,
+                "2 × 2 × 2 … twenty times is 1,048,576. Every extra letter doubles the work.",
+            ),
+        ),
+    )
+
+    private val cnfLesson = LessonDef(
+        "sat-2", "Clause form", "Literals, clauses, and the recipe that turns any formula into them.", listOf(Impl, DeM, DN, Dist),
+        listOf(
+            Read(
+                "Literals and clauses",
+                listOf(
+                    "A literal is a letter or a negated letter: P or ¬Q.",
+                    "A clause is literals joined by ∨, like ¬P ∨ Q ∨ R. It's one small requirement: at least one of its literals must be true.",
+                    "Solvers take their input as a list of clauses that must all hold. Clauses joined by ∧ like this are called conjunctive normal form, or CNF.",
+                    "In a proof, a clause with three literals still needs brackets to show the grouping, like (¬P ∨ Q) ∨ R. For Resolution the grouping and the order don't matter: only which literals are in the clause.",
+                ),
+            ),
+            Quiz(
+                "Check", "Which of these is a clause?",
+                listOf("P ∨ ¬Q ∨ R", "P → Q", "¬(P ∨ Q)"), 0,
+                "A clause has only letters, ¬ directly on letters, and ∨. P → Q has an arrow, and ¬(P ∨ Q) puts a ¬ on brackets.",
+            ),
+            Read(
+                "The recipe",
+                listOf(
+                    "Any formula can be put into clauses with rules you already know, in this order:",
+                    "1. Impl turns every P → Q into ¬P ∨ Q.",
+                    "2. DeM and DN push every ¬ down onto single letters.",
+                    "3. Dist pushes ∨ inside ∧: P ∨ (Q ∧ R) becomes (P ∨ Q) ∧ (P ∨ R).",
+                    "The ∧ just separates the clauses: each side becomes its own entry in the solver's list.",
+                ),
+                rules = listOf(Impl, DeM, Dist),
+            ),
+            Guided(
+                "Push the ¬ inside", listOf("¬(P ∧ ¬Q)"), "¬P ∨ Q", listOf(DeM, DN),
+                listOf(
+                    Coach("The ¬ sits on brackets, so this isn't a clause yet. Cite line 1 and choose DeM.") { it.citing(1) && it.rule == DeM },
+                    Coach("De Morgan's pushes the ¬ inside and flips ∧ to ∨. Write ¬P ∨ ¬¬Q and add the line.") { it.has("¬P ∨ ¬¬Q") },
+                    Coach("Two negations cancel. Cite line 2, choose DN, and write ¬P ∨ Q.") { it.done },
+                ),
+                "One clause: ¬P ∨ Q. That's the same as P → Q, which is exactly what ¬(P ∧ ¬Q) says: never P without Q.",
+                solution = listOf("¬P ∨ ¬¬Q" to "1, DeM", "¬P ∨ Q" to "2, DN"),
+            ),
+            Practice(
+                "Split into clauses", "Use Impl, then Dist. You'll end with two clauses joined by ∧.",
+                listOf("P → (Q ∧ R)"), "(¬P ∨ Q) ∧ (¬P ∨ R)", listOf(Impl, Dist),
+                listOf("¬P ∨ (Q ∧ R)" to "1, Impl", "(¬P ∨ Q) ∧ (¬P ∨ R)" to "2, Dist"),
+            ),
+            Practice(
+                "Neither, or", "Push the ¬ inside, swap the sides of ∨ so the ∧ is on the right, then distribute.",
+                listOf("¬(P ∨ Q) ∨ R"), "(R ∨ ¬P) ∧ (R ∨ ¬Q)", listOf(DeM, Com, Dist),
+                listOf("(¬P ∧ ¬Q) ∨ R" to "1, DeM", "R ∨ (¬P ∧ ¬Q)" to "2, Com", "(R ∨ ¬P) ∧ (R ∨ ¬Q)" to "3, Dist"),
+            ),
+        ),
+    )
+
+    private val resolutionLesson = LessonDef(
+        "sat-3", "Resolution", "The one rule a computer needs, and proof by refutation.", listOf(Res),
+        listOf(
+            Read(
+                "One rule is enough",
+                listOf(
+                    "For clauses, a computer needs just one rule: Resolution. From P ∨ A and ¬P ∨ B, conclude A ∨ B.",
+                    "Why it works: P is either true or false. If P is false, the first clause needs A. If P is true, the second needs B. Either way, A ∨ B.",
+                    "A and B can be several literals, or none at all: from P and ¬P ∨ Q you get Q. That's Disjunctive Syllogism in a new outfit.",
+                ),
+                Example(listOf("P ∨ Q" to "Premise", "¬P ∨ R" to "Premise", "Q ∨ R" to "1, 2, Res"), "Q ∨ R"),
+                rules = listOf(Res),
+            ),
+            Guided(
+                "Cancel a letter", listOf("P ∨ Q", "¬P ∨ R"), "Q ∨ R", listOf(Res),
+                listOf(
+                    Coach("P is plain in line 1 and negated in line 2. Cite both lines.") { it.citing(1, 2) },
+                    Coach("Pick Res.") { it.rule == Res },
+                    Coach("Drop P and ¬P, join what's left with ∨: write Q ∨ R, then add the line.") { it.done },
+                ),
+                "That's resolution: two clauses that disagree about P give a clause without P.",
+                solution = listOf("Q ∨ R" to "1, 2, Res"),
+            ),
+            Quiz(
+                "One letter at a time", "What does Resolution give from P ∨ Q and ¬P ∨ ¬Q?",
+                listOf("Nothing: P and Q both cancel, so they contradict", "Q ∨ ¬Q, resolving on P", "P ∧ Q"), 1,
+                "Resolution cancels exactly one letter. Cancelling both is a classic mistake: P true and Q false makes both clauses true, so they don't contradict. Resolving on P gives Q ∨ ¬Q, which is always true and tells you nothing new.",
+            ),
+            Practice(
+                "A chain", "Resolve lines 1 and 2 on Q, then resolve the result with line 3 on R.",
+                listOf("P ∨ Q", "¬Q ∨ R", "¬R ∨ S"), "P ∨ S", listOf(Res),
+                listOf("P ∨ R" to "1, 2, Res", "P ∨ S" to "4, 3, Res"),
+            ),
+            Read(
+                "Refutation: indirect proof, automated",
+                listOf(
+                    "To check an argument, a solver adds the negated conclusion to the premises, turns everything into clauses, and resolves until it reaches a letter and its negation.",
+                    "That clash means the clauses can't all be true, so the argument is valid. Here's P → Q, P ∴ Q:",
+                ),
+                Example(
+                    listOf(
+                        "¬P ∨ Q" to "Premise (P → Q)", "P" to "Premise", "¬Q" to "Negated conclusion",
+                        "Q" to "1, 2, Res", "Q ∧ ¬Q" to "4, 3, Conj",
+                    ),
+                    "Q ∧ ¬Q",
+                ),
+            ),
+            Practice(
+                "Find the clash", "These clauses come from P → Q, Q → R, P and the negated conclusion ¬R. Resolve down to R, then join it with ¬R.",
+                listOf("¬P ∨ Q", "¬Q ∨ R", "P", "¬R"), "R ∧ ¬R", listOf(Res, Conj),
+                listOf("Q" to "1, 3, Res", "R" to "2, 5, Res", "R ∧ ¬R" to "6, 4, Conj"),
+            ),
+        ),
+    )
+
+    private val dpllLesson = LessonDef(
+        "sat-4", "Solving like a computer", "Guess, follow the forced moves, and backtrack: the DPLL algorithm.", emptyList(),
+        listOf(
+            Read(
+                "Forced moves",
+                listOf(
+                    "A clause is satisfied as soon as one of its literals is true. If every literal but one is false, the last one is forced: it has to be true.",
+                    "Solvers call this unit propagation. It's Disjunctive Syllogism again: P ∨ Q, and P is false, so Q.",
+                ),
+            ),
+            SolverStep(
+                "No guessing needed", "Tap a clause marked \"forced\" to set its letter. Keep going until every clause is satisfied.",
+                listOf("P", "¬P ∨ Q", "¬Q ∨ R", "¬R ∨ S ∨ ¬P"), SolverGoal.SATISFY, propagateAll = false, maxGuesses = 0,
+                success = "Solved without a single guess: every value was forced. Real solvers often set thousands of letters this way.",
+            ),
+            Read(
+                "Guess, then propagate",
+                listOf(
+                    "When nothing is forced, the solver guesses a letter and propagates again.",
+                    "If a clause ends up with every literal false, that's a conflict: some guess was wrong. Undo back to the latest guess, give that letter its other value, and carry on. That's backtracking.",
+                    "Guess, propagate, backtrack: this is the DPLL algorithm, the heart of modern SAT solvers.",
+                ),
+            ),
+            SolverStep(
+                "One guess", "Tap a letter to guess its value, then press Propagate to set everything that's forced.",
+                listOf("P ∨ Q", "¬P ∨ R", "¬R ∨ S", "¬Q ∨ ¬S", "Q ∨ S"), SolverGoal.SATISFY, propagateAll = true, maxGuesses = 1,
+                success = "One guess and the rest followed. Good solvers pick guesses that force as much as possible.",
+            ),
+            SolverStep(
+                "Hitting a conflict", "Guess P true first and propagate. When a clause turns red, press Backtrack and keep going.",
+                listOf("¬P ∨ Q", "¬P ∨ ¬Q", "P ∨ R", "¬R ∨ S"), SolverGoal.SATISFY, propagateAll = true,
+                success = "P true forced both Q and ¬Q, a conflict. Backtracking flipped P to false, and from there everything was forced.",
+            ),
+            SolverStep(
+                "Proving it can't be done", "No assignment works here. Guess, propagate and backtrack until every branch has failed.",
+                listOf("P ∨ Q", "P ∨ ¬Q", "¬P ∨ R", "¬P ∨ ¬R"), SolverGoal.REFUTE, propagateAll = true,
+                success = "Every branch ended in a conflict, so no assignment can satisfy these clauses. A solver's \"unsatisfiable\" is a proof: it covered every case without listing every row.",
+            ),
+            Read(
+                "Where solvers are used",
+                listOf(
+                    "Chip makers use SAT solvers to prove a circuit does what it should before building it. Airlines and sports leagues make schedules with them. Software tools use them to find bugs, and package managers use them to pick versions that work together.",
+                    "Puzzles too: a Sudoku becomes a SAT problem with a letter for each \"this cell holds this digit\", and clauses saying every cell gets one digit and no row, column or box repeats one.",
+                    "For endless practice, try the Solver game in the Games tab.",
+                ),
+            ),
+        ),
+    )
+
+    val computingCourses = listOf(
+        Course(
+            "sat", "How Computers Solve Logic", "SAT · CNF · Res", "Clauses, resolution, and the search that powers SAT solvers.",
+            Spec(listOf(Conj, DN, Com, Assoc, DeM, Dist, Impl, Res), emptyList(), 1..1, 1..7, 4, 0.0, 9, 0.0, mapOf(ATOM to 1.0), patterns = "resolution"),
+            listOf(satLesson, cnfLesson, resolutionLesson, dpllLesson), track = Track.COMPUTING,
+        ),
+    )
+
     const val DAILY_PRED_ID = "daily-pred"
 
     /** The daily predicate proof: a mixed predicate puzzle, the same for everyone each day. */
@@ -1158,7 +1372,7 @@ object Curriculum {
     )
 
     /** Every course, both tabs. */
-    val allCourses get() = courses + predicateCourses
+    val allCourses get() = courses + predicateCourses + computingCourses
 
     const val DAILY_ID = "daily"
     const val DAILY_LEVEL = 3
@@ -1192,6 +1406,6 @@ object Curriculum {
         val own = course.spec.rules
         val predicate = own.any { it.isQuantifierRule || it.isIdentityRule }
         return if (!predicate) boardRules(own)
-        else Rule.entries.filter { it in own || !(it.isQuantifierRule || it.isIdentityRule) }
+        else Rule.entries.filter { it in own || !(it.isQuantifierRule || it.isIdentityRule || it.isSatRule) }
     }
 }

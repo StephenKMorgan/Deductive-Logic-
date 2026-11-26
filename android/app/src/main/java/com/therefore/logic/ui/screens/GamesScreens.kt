@@ -64,7 +64,7 @@ import com.therefore.logic.ui.theme.FormulaStyle
 import com.therefore.logic.ui.theme.LocalPalette
 import com.therefore.logic.ui.theme.Mono
 
-enum class GameId(val route: String) { ISLAND("game/island"), QUIZ("game/quiz"), BOARD("game/board") }
+enum class GameId(val route: String) { ISLAND("game/island"), QUIZ("game/quiz"), BOARD("game/board"), SOLVER("game/solver") }
 
 @Composable
 fun GamesScreen(vm: GamesViewModel, onOpen: (GameId) -> Unit) {
@@ -86,6 +86,10 @@ fun GamesScreen(vm: GamesViewModel, onOpen: (GameId) -> Unit) {
                     "Switchboard", "Flip the switches until every statement lights up. Each board has exactly one solution.",
                     "${stats.boardSolved} solved · ${stats.boardPerfect} in the fewest flips", "I/O",
                 ) { onOpen(GameId.BOARD) }
+                GameCard(
+                    "Solver", "Be a SAT solver: guess, follow the forced moves, backtrack. Satisfy every clause or prove it can't be done, in as few guesses as you can.",
+                    "${stats.solverSolved} solved · ${stats.solverPar} at or under par", "SAT",
+                ) { onOpen(GameId.SOLVER) }
             }
         }
     }
@@ -278,6 +282,43 @@ private fun QuestionView(q: Question) {
             FormulaText(q.left.show(), style = FormulaStyle.copy(fontSize = 19.sp))
             Text("and", color = p.muted)
             FormulaText(q.right.show(), style = FormulaStyle.copy(fontSize = 19.sp))
+        }
+    }
+}
+
+// ======================= Solver =======================
+
+@Composable
+fun SolverScreen(vm: GamesViewModel, onBack: () -> Unit) {
+    val p = LocalPalette.current
+    val state by vm.solver.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { if (vm.solver.value == null) vm.newSolver() }
+    GameScaffold("Solver", onBack) { pad ->
+        val g = state ?: return@GameScaffold
+        val s = g.state
+        Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Satisfy every clause, or prove that no assignment can.", style = MaterialTheme.typography.titleMedium)
+            Text("Par: ${g.par} guess${if (g.par == 1) "" else "es"}. Forced moves and backtracking are free.", color = p.muted)
+            com.therefore.logic.ui.components.SolverBoard(
+                s, propagateAll = true,
+                onGuess = vm::solverGuess, onForce = vm::solverForce, onPropagate = vm::solverPropagate,
+                onBacktrack = vm::solverBacktrack, onReset = vm::solverReset,
+            )
+            if (s.finished) {
+                Panel(color = p.goodSoft, border = false) {
+                    Text(
+                        (if (s.solved) "Satisfied" else "Unsatisfiable, and proved") + " in ${s.guesses} guess${if (s.guesses == 1) "" else "es"}. " +
+                            if (s.guesses <= g.par) "At or under par!" else "Par was ${g.par}: try guessing the letter that appears in the most open clauses.",
+                        color = p.good, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Button(onClick = { vm.newSolver() }, Modifier.fillMaxWidth()) { Text("Next board") }
+            } else {
+                Text(
+                    "Some boards are satisfiable and some aren't. You won't know until you find an assignment or run out of guesses to undo.",
+                    style = MaterialTheme.typography.bodySmall, color = p.muted,
+                )
+            }
         }
     }
 }

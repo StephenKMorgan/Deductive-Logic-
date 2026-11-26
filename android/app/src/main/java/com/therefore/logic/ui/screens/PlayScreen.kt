@@ -355,7 +355,8 @@ private fun RulePicker(rules: List<Rule>, selected: Rule?, onSelect: (Rule?) -> 
             for ((label, inGroup) in listOf<Pair<String, (Rule) -> Boolean>>(
                 "Quantifier rules" to { it.isQuantifierRule },
                 "Identity rules" to { it.isIdentityRule },
-                "Rules of inference" to { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule && !it.isIdentityRule },
+                "Resolution" to { it.isSatRule },
+                "Rules of inference" to { it.kind == RuleKind.INFERENCE && !it.isQuantifierRule && !it.isIdentityRule && !it.isSatRule },
                 "Replacement rules" to { it.kind == RuleKind.REPLACEMENT && !it.isQuantifierRule && !it.isIdentityRule },
                 "Assumptions" to { it.kind == RuleKind.ASSUMPTION || it.kind == RuleKind.CLOSE },
             )) {

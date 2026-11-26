@@ -44,7 +44,8 @@ enum class Rule(
     IdR("Identity: Reflexivity", RuleKind.INFERENCE, 0, "nothing", "a = a", "Anything is identical to itself. Cite no lines."),
     IdS("Identity: Symmetry", RuleKind.REPLACEMENT, 1, "a = b", "b = a", "If a is b, then b is a."),
     Id("Identity: Substitution", RuleKind.INFERENCE, 2, "Fa, a = b", "Fb", "If a and b are the same thing, whatever is true of a is true of b."),
-    QN("Quantifier Negation", RuleKind.REPLACEMENT, 1, "¬∀x Fx / ¬∃x Fx", "∃x ¬Fx / ∀x ¬Fx", "\"Not everything is F\" means \"something isn't F\", and the other way round.");
+    QN("Quantifier Negation", RuleKind.REPLACEMENT, 1, "¬∀x Fx / ¬∃x Fx", "∃x ¬Fx / ∀x ¬Fx", "\"Not everything is F\" means \"something isn't F\", and the other way round."),
+    Res("Resolution", RuleKind.INFERENCE, 2, "P ∨ A, ¬P ∨ B", "A ∨ B", "P is true or false. Either way one of the leftovers holds, so cancel P and ¬P and join the rest.");
 
     val isStandard: Boolean get() = kind == RuleKind.INFERENCE || kind == RuleKind.REPLACEMENT
 
@@ -52,6 +53,9 @@ enum class Rule(
     val isQuantifierRule: Boolean get() = this == UI || this == EG || this == EI || this == UG || this == QN
 
     val isIdentityRule: Boolean get() = this == IdR || this == IdS || this == Id
+
+    /** Resolution: the one rule SAT solvers use. Taught in its own course, so kept out of the usual menus. */
+    val isSatRule: Boolean get() = this == Res
 
     val abbr: String get() = name
 }
@@ -154,7 +158,39 @@ object Checker {
         }
     }
 
+    /** The literals of a clause (letters or negated letters joined by ∨), or null if [f] isn't one. */
+    fun clause(f: Formula): Set<Formula>? = when {
+        f is Formula.Atom -> setOf(f)
+        f is Not && f.a is Formula.Atom -> setOf(f)
+        f is Bin && f.op == Op.OR -> clause(f.a)?.let { a -> clause(f.b)?.let { b -> a + b } }
+        else -> null
+    }
+
+    private fun complement(l: Formula) = if (l is Not) l.a else not(l)
+
+    private fun resolution(c: List<Formula>, r: Formula): Check {
+        val a = clause(c[0]); val b = clause(c[1])
+        if (a == null || b == null)
+            return fail("Resolution works on clauses: letters or negated letters joined by ∨, like ¬P ∨ Q. Put the line in that form first with Impl, DeM or DN.")
+        val pivots = a.filter { complement(it) in b }
+        if (pivots.isEmpty())
+            return fail("Resolution needs a letter that is plain in one line and negated in the other, like P in one and ¬P in the other.")
+        fun join(lits: Set<Formula>) = lits.reduce { x, y -> or(x, y) }
+        val want = pivots.map { p -> (a - p) + (b - complement(p)) }
+        val got = clause(r)
+        if (got != null && want.any { it == got }) return OK
+        if (want.all { it.isEmpty() })
+            return fail("${s(c[0])} and ${s(c[1])} clash completely, so they can't both be true. There's nothing left to write: join them with Conj to show the contradiction.")
+        if (pivots.size > 1 && got != null && got == (a - pivots.toSet()) + (b - pivots.map(::complement).toSet()))
+            return fail("Resolution cancels one letter at a time. Cancelling two at once isn't valid: P ∨ Q and ¬P ∨ ¬Q are both true when P is true and Q is false.")
+        val p = pivots.first()
+        val w = want.first()
+        return if (w.isEmpty()) fail("Cancelling ${s(p)} and ${s(complement(p))} leaves nothing at all: the two lines contradict each other.")
+        else fail("Resolve on ${s(p)}: drop ${s(p)} and ${s(complement(p))}, and join everything left with ∨: ${s(join(w))}.")
+    }
+
     private fun inference(rule: Rule, c: List<Formula>, r: Formula): Check {
+        if (rule == Rule.Res) return resolution(c, r)
         // Two cited lines can fit a rule in both orders (P → Q and Q → P chain either way), so the
         // line is accepted if either order gives it; only then fall through to explain the mistake.
         if (c.size == 1) return inferenceOrdered(rule, c[0], c[0], r, single = true)
@@ -321,7 +357,7 @@ object Checker {
         }
         val res = raw(rule, cited, result)
         if (res.ok) return res
-        val alt = Rule.entries.firstOrNull { it != rule && works(it, cited, result) } ?: return res
+        val alt = Rule.entries.firstOrNull { it != rule && !it.isSatRule && works(it, cited, result) } ?: return res
         return res.copy(message = res.message + " Your line is still correct, though: it follows by ${alt.title} (${alt.abbr}).", alt = alt)
     }
 }
