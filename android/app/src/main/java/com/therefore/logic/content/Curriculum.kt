@@ -1153,6 +1153,7 @@ object Curriculum {
             Spec(listOf(MP, Simp, Conj, Com, UI, EI, EG, IdR, IdS, Id, AIP, IP), emptyList(), 1..1, 1..9, 3, 0.0, 9, 0.0, mapOf(ATOM to 1.0), patterns = "identity"),
             listOf(identityLesson, differentLesson, countingLesson), track = Track.PREDICATE,
         ),
+        descriptionsCourse,
     )
 
     // ---------------- How computers do logic: SAT ----------------
@@ -1363,8 +1364,11 @@ object Curriculum {
     const val SECTION_COMPUTERS = "How computers do logic"
     const val SECTION_TREES = "Another way to test arguments"
     const val SECTION_NEW = "New kinds of logic"
+    const val SECTION_META = "Logic about logic"
+    const val SECTION_MATH = "Proof in mathematics"
+    const val SECTION_LIFE = "Logic in real life"
 
-    val extraCourses get() = computingCourses + newLogicCourses
+    val extraCourses get() = computingCourses + newLogicCourses + laterCourses
 
     private val computingCourses = listOf(
         Course(

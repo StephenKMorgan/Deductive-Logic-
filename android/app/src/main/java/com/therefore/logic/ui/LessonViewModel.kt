@@ -43,6 +43,9 @@ data class StepState(
     /** Two-place relations: the ordered pairs (row thing, column thing) that are on. */
     val rels: Map<Char, Set<Pair<Int, Int>>> = emptyMap(),
     val worldsSeen: Set<String> = emptySet(),
+    /** Put-in-order steps: how many pieces are placed, and the last wrong tap. */
+    val placed: Int = 0,
+    val wrong: String? = null,
     /** A truth tree. */
     val tree: com.therefore.logic.ext.TreeState? = null,
     /** A possible-worlds model, and how many changes have been tried (for "it can't be done" steps). */
@@ -94,6 +97,7 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             val rels = arity.filterValues { it == 2 }.keys.associateWith { emptySet<Pair<Int, Int>>() }
             evaluateWorld(step, StepState(props = props, rels = rels, worldsSeen = setOf(worldKey(props, rels))))
         }
+        is LessonStep.OrderStep -> StepState()
         is LessonStep.TreeStep -> StepState(tree = com.therefore.logic.ext.Trees.start(step.premises.map(::f), f(step.conclusion)))
         is LessonStep.KripkeStep -> {
             val letters = step.formulas.flatMap { com.therefore.logic.ext.XParser.of(it).atoms() }.toSortedSet()
@@ -174,6 +178,24 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         val st = evaluateTable(step, s.step.copy(values = values, visited = s.step.visited + mask(values)))
         if (st.found && !s.step.found) c.haptics.solved()
         _state.value = s.copy(step = st)
+    }
+
+    // ----- Put in order -----
+
+    fun place(piece: String) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.OrderStep ?: return
+        if (s.step.complete) return
+        val next = step.pieces.getOrNull(s.step.placed) ?: return
+        if (piece == next) {
+            val placed = s.step.placed + 1
+            val done = placed == step.pieces.size
+            if (done) c.haptics.solved() else c.haptics.accept()
+            _state.value = s.copy(step = s.step.copy(placed = placed, wrong = null, complete = done))
+        } else {
+            c.haptics.reject()
+            _state.value = s.copy(step = s.step.copy(wrong = if (piece in step.extra) "That piece doesn't belong in this one at all." else "Not next. " + step.why))
+        }
     }
 
     // ----- Truth trees -----

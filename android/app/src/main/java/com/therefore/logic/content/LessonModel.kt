@@ -54,7 +54,16 @@ class Coach(val text: String, val done: (GameState) -> Boolean)
 sealed interface LessonStep {
     val title: String
 
-    data class Read(override val title: String, val body: List<String>, val example: Example? = null, val rules: List<Rule> = emptyList()) : LessonStep
+    data class Read(
+        override val title: String,
+        val body: List<String>,
+        val example: Example? = null,
+        val rules: List<Rule> = emptyList(),
+        /** A button that opens a web page: (label, address). */
+        val link: Pair<String, String>? = null,
+        /** Code shown in a monospaced box, e.g. a Lean proof. */
+        val code: String? = null,
+    ) : LessonStep
 
     data class Quiz(override val title: String, val question: String, val options: List<String>, val answer: Int, val explain: String) : LessonStep
 
@@ -94,6 +103,20 @@ sealed interface LessonStep {
         val goal: SolverGoal,
         val propagateAll: Boolean,
         val maxGuesses: Int? = null,
+        val success: String,
+    ) : LessonStep
+
+    /**
+     * Put the pieces in order: tap them one at a time. [pieces] is the right order; [extra] are pieces that don't
+     * belong at all. [why] is shown after a wrong tap. With [code], pieces are shown in a monospaced font.
+     */
+    data class OrderStep(
+        override val title: String,
+        val prompt: String,
+        val pieces: List<String>,
+        val extra: List<String> = emptyList(),
+        val why: String,
+        val code: Boolean = false,
         val success: String,
     ) : LessonStep
 

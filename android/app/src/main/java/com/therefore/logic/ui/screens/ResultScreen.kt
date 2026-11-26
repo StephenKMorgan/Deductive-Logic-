@@ -187,6 +187,19 @@ fun ResultScreen(state: GameState, onBack: () -> Unit, onNext: () -> Unit, onLes
                     Ledger(state.lines.mapIndexed { i, l -> LedgerRow(l.formula.show(), l.justification, premise = l.rule == null, depth = sc.depth(i + 1)) }, state.puzzle.conclusion.show())
                 }
             }
+            if (!revealed && com.therefore.logic.engine.Lean.supports(state.puzzle.premises, state.lines)) item {
+                Expandable("Your proof in Lean") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "The same proof in Lean, a language computers use to check proofs. Each line is a \"have\"; rules like MP and Simp become small pieces of code.",
+                            style = MaterialTheme.typography.bodySmall, color = LocalPalette.current.muted,
+                        )
+                        com.therefore.logic.ui.components.CodeBox(
+                            com.therefore.logic.engine.Lean.proof(state.puzzle.premises, state.lines, state.puzzle.conclusion), lean = true,
+                        )
+                    }
+                }
+            }
             item { SectionTitle("Rules in this puzzle") }
             rulesUsed.forEach { rule -> item { RuleCard(rule) } }
             item {

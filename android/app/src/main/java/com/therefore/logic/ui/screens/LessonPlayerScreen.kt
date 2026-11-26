@@ -133,6 +133,7 @@ fun LessonPlayerScreen(
                 is LessonStep.WorldStep -> WorldExplorer(vm, step, s.step)
                 is LessonStep.SolverStep -> SolverLessonStep(vm, step, s.step)
                 is LessonStep.TreeStep -> TreeLessonStep(vm, step, s.step)
+                is LessonStep.OrderStep -> OrderLessonStep(vm, step, s.step)
                 is LessonStep.KripkeStep -> KripkeLessonStep(vm, step, s.step)
                 is LessonStep.TimelineStep -> TimelineLessonStep(vm, step, s.step)
                 is LessonStep.Guided -> BoardStep(vm, s.step, s.stepIndex == total - 1, coachFor(step, s.step), step.success)
@@ -169,7 +170,49 @@ private fun ReadStep(step: LessonStep.Read) {
                 )
             }
         }
+        step.code?.let { com.therefore.logic.ui.components.CodeBox(it, lean = it.contains(":=")) }
         step.rules.forEach { RuleCard(it) }
+        step.link?.let { (label, url) ->
+            val uri = androidx.compose.ui.platform.LocalUriHandler.current
+            OutlinedButton(onClick = { uri.openUri(url) }, Modifier.fillMaxWidth()) { Text(label) }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun OrderLessonStep(vm: LessonViewModel, step: LessonStep.OrderStep, st: StepState) {
+    val p = LocalPalette.current
+    // A fixed shuffle per step, so the pieces don't jump around between taps.
+    val pool = androidx.compose.runtime.remember(step) { (step.pieces + step.extra).shuffled(kotlin.random.Random(step.title.hashCode())) }
+    val placed = step.pieces.take(st.placed)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Eyebrow("Put it in order")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        Panel {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (placed.isEmpty()) Text("Tap the first piece below.", color = p.muted, style = MaterialTheme.typography.bodySmall)
+                placed.forEachIndexed { i, piece ->
+                    Row {
+                        Text("${i + 1}. ", fontFamily = com.therefore.logic.ui.theme.Mono, color = p.muted, fontSize = 13.sp)
+                        if (step.code) Text(piece, fontFamily = com.therefore.logic.ui.theme.Mono, fontSize = 13.sp)
+                        else LogicText(piece, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        if (!st.complete) androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for (piece in pool) if (piece !in placed) OutlinedButton(
+                onClick = { vm.place(piece) },
+                modifier = Modifier.semantics { contentDescription = "Piece: $piece" },
+            ) {
+                if (step.code) Text(piece, fontFamily = com.therefore.logic.ui.theme.Mono, fontSize = 13.sp) else LogicText(piece)
+            }
+        }
+        st.wrong?.let { if (!st.complete) Panel(color = p.badSoft, border = false) { LogicText(it, color = p.ink) } }
+        if (st.complete) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
     }
 }
 

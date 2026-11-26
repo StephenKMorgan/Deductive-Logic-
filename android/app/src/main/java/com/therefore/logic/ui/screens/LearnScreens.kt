@@ -162,6 +162,9 @@ private val SECTION_ABOUT = mapOf(
     Curriculum.SECTION_COMPUTERS to "Programs called SAT solvers check logic at a scale no person could. Learn the shape they use, their one rule, and how they search.",
     Curriculum.SECTION_TREES to "Truth trees test an argument by searching for a counterexample, one branch at a time.",
     Curriculum.SECTION_NEW to "Logic about what must be, what will be, and what can be shown.",
+    Curriculum.SECTION_META to "What logic can and can't do: why the rules work, and the limits no rules can pass.",
+    Curriculum.SECTION_MATH to "How mathematicians prove things about infinitely many numbers, and how computers check those proofs.",
+    Curriculum.SECTION_LIFE to "Putting it to work on real arguments.",
 )
 
 @Composable

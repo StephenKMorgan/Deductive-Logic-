@@ -413,9 +413,31 @@ object Generator {
         Pattern(5, listOf("Fa", "¬Ga", "Gb"), "¬(a = b)", listOf("a = b" to "AIP", "Ga" to "3, 4, Id", "Ga ∧ ¬Ga" to "5, 2, Conj", "¬(a = b)" to "IP")),
     )
 
+    /** Definite descriptions ("the F"), counting, and proofs with several quantifiers. */
+    private val DESCRIPTION_PATTERNS = listOf(
+        Pattern(1, listOf("∀x∀y(Lxy → Lyx)", "Lab"), "Lba", listOf("∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "3, UI", "Lba" to "4, 2, MP")),
+        Pattern(2, listOf("∃x((Fx ∧ ∀y(Fy → y = x)) ∧ Gx)"), "∃x(Fx ∧ Gx)", listOf(
+            "(Fa ∧ ∀y(Fy → y = a)) ∧ Ga" to "1, EI", "Fa ∧ ∀y(Fy → y = a)" to "2, Simp", "Fa" to "3, Simp",
+            "Ga ∧ (Fa ∧ ∀y(Fy → y = a))" to "2, Com", "Ga" to "5, Simp", "Fa ∧ Ga" to "4, 6, Conj", "∃x(Fx ∧ Gx)" to "7, EG",
+        )),
+        Pattern(3, listOf("∃x((Fx ∧ ∀y(Fy → y = x)) ∧ Gx)", "Fb"), "Gb", listOf(
+            "(Fa ∧ ∀y(Fy → y = a)) ∧ Ga" to "1, EI", "Fa ∧ ∀y(Fy → y = a)" to "3, Simp", "∀y(Fy → y = a) ∧ Fa" to "4, Com",
+            "∀y(Fy → y = a)" to "5, Simp", "Fb → b = a" to "6, UI", "b = a" to "7, 2, MP",
+            "Ga ∧ (Fa ∧ ∀y(Fy → y = a))" to "3, Com", "Ga" to "9, Simp", "Gb" to "10, 8, Id",
+        )),
+        Pattern(4, listOf("∀x∀y((Fx ∧ Fy) → x = y)", "Fa", "¬(a = b)"), "¬Fb", listOf(
+            "Fb" to "AIP", "∀y((Fa ∧ Fy) → a = y)" to "1, UI", "(Fa ∧ Fb) → a = b" to "5, UI", "Fa ∧ Fb" to "2, 4, Conj",
+            "a = b" to "6, 7, MP", "(a = b) ∧ ¬(a = b)" to "8, 3, Conj", "¬Fb" to "IP",
+        )),
+        Pattern(5, listOf("∀x∀y(Lxy → Lyx)", "∀x∀y∀z((Lxy ∧ Lyz) → Lxz)", "Lab"), "Laa", listOf(
+            "∀y(Lay → Lya)" to "1, UI", "Lab → Lba" to "4, UI", "Lba" to "5, 3, MP", "∀y∀z((Lay ∧ Lyz) → Laz)" to "2, UI",
+            "∀z((Lab ∧ Lbz) → Laz)" to "7, UI", "(Lab ∧ Lba) → Laa" to "8, UI", "Lab ∧ Lba" to "3, 6, Conj", "Laa" to "9, 10, MP",
+        )),
+    )
+
     /** Builds a puzzle from an argument pattern, with the letters and names shuffled. */
     private fun attemptPattern(spec: Spec, rng: Random, level: Int): Puzzle? {
-        val all = if (spec.patterns == "identity") IDENTITY_PATTERNS else RELATION_PATTERNS
+        val all = when (spec.patterns) { "identity" -> IDENTITY_PATTERNS; "descriptions" -> DESCRIPTION_PATTERNS; else -> RELATION_PATTERNS }
         val options = all.filter { it.minLevel <= level && it.minLevel >= level - 2 }.ifEmpty { all }
         val pat = options[rng.nextInt(options.size)]
         val rel = "LRK"[rng.nextInt(3)]
