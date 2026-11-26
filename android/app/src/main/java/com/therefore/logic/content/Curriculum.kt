@@ -18,7 +18,7 @@ import com.therefore.logic.engine.Rule
 import com.therefore.logic.engine.Rule.*
 import com.therefore.logic.engine.Spec
 
-enum class Track { PROPOSITIONAL, PREDICATE, COMPUTING }
+enum class Track { PROPOSITIONAL, PREDICATE, EXTRA }
 
 data class Course(
     val id: String,
@@ -29,7 +29,14 @@ data class Course(
     val lessons: List<LessonDef>,
     val advanced: Boolean = false,
     val track: Track = Track.PROPOSITIONAL,
+    /** The heading the course sits under on the Learn tab (extra courses only). */
+    val section: String? = null,
+    /** For courses practised with generated exercise sets instead of proofs: builds one set. */
+    val drills: ((kotlin.random.Random) -> List<LessonStep>)? = null,
 ) {
+    /** Whether practice and free play are generated proofs (otherwise generated exercise sets). */
+    val practisesProofs: Boolean get() = drills == null
+
     /** The puzzle settings for free play on one lesson: same course, focused on that lesson's rules. */
     fun specFor(lesson: LessonDef?): Spec {
         val focus = lesson?.rules?.filter { it.isStandard && it in spec.rules }.orEmpty()
@@ -1353,11 +1360,17 @@ object Curriculum {
         ),
     )
 
-    val computingCourses = listOf(
+    const val SECTION_COMPUTERS = "How computers do logic"
+    const val SECTION_TREES = "Another way to test arguments"
+    const val SECTION_NEW = "New kinds of logic"
+
+    val extraCourses get() = computingCourses + newLogicCourses
+
+    private val computingCourses = listOf(
         Course(
             "sat", "How Computers Solve Logic", "SAT · CNF · Res", "Clauses, resolution, and the search that powers SAT solvers.",
             Spec(listOf(Conj, DN, Com, Assoc, DeM, Dist, Impl, Res), emptyList(), 1..1, 1..7, 4, 0.0, 9, 0.0, mapOf(ATOM to 1.0), patterns = "resolution"),
-            listOf(satLesson, cnfLesson, resolutionLesson, dpllLesson), track = Track.COMPUTING,
+            listOf(satLesson, cnfLesson, resolutionLesson, dpllLesson), track = Track.EXTRA, section = SECTION_COMPUTERS,
         ),
     )
 
@@ -1372,7 +1385,7 @@ object Curriculum {
     )
 
     /** Every course, both tabs. */
-    val allCourses get() = courses + predicateCourses + computingCourses
+    val allCourses get() = courses + predicateCourses + extraCourses
 
     const val DAILY_ID = "daily"
     const val DAILY_LEVEL = 3
@@ -1391,8 +1404,19 @@ object Curriculum {
 
     fun isDaily(id: String) = id == DAILY_ID || id == DAILY_PRED_ID
 
-    fun lesson(id: String): Pair<Course, LessonDef> =
-        allCourses.firstNotNullOf { c -> c.lessons.firstOrNull { it.id == id }?.let { c to it } }
+    /** Generated practice sets have ids like "gen-trees-12345": the course, then the seed. */
+    fun practiceSetId(courseId: String, seed: Long) = "gen-$courseId-$seed"
+    fun isPracticeSet(id: String) = id.startsWith("gen-")
+
+    fun lesson(id: String): Pair<Course, LessonDef> {
+        if (isPracticeSet(id)) {
+            val courseId = id.removePrefix("gen-").substringBeforeLast('-')
+            val seed = id.substringAfterLast('-').toLong()
+            val c = byId(courseId)
+            return c to LessonDef(id, "Practice set", "Freshly generated exercises.", emptyList(), c.drills!!(kotlin.random.Random(seed)))
+        }
+        return allCourses.firstNotNullOf { c -> c.lessons.firstOrNull { it.id == id }?.let { c to it } }
+    }
 
     /** All rules a board should offer, in menu order. */
     fun boardRules(rules: List<Rule>): List<Rule> = Rule.entries.filter { it in rules }

@@ -2,6 +2,7 @@
 
 package com.therefore.logic.ui.screens
 
+import com.therefore.logic.ext.satisfies
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -77,6 +78,8 @@ fun LessonPlayerScreen(
     onClose: () -> Unit,
     onNextLesson: (String) -> Unit,
     onFreePlay: (level: Int) -> Unit,
+    /** For courses practised with generated exercise sets: open a fresh set. */
+    onPracticeSet: () -> Unit = {},
 ) {
     val p = LocalPalette.current
     val state by vm.state.collectAsStateWithLifecycle()
@@ -87,7 +90,11 @@ fun LessonPlayerScreen(
 
     if (s.finished) {
         val next = course.lessons.getOrNull(course.lessons.indexOf(lesson) + 1)
-        LessonComplete(lesson.title, next?.title, onClose, onNext = { next?.let { onNextLesson(it.id) } }, onFreePlay = { picking = true }, onRestart = vm::restart)
+        LessonComplete(
+            lesson.title, next?.title, onClose, onNext = { next?.let { onNextLesson(it.id) } },
+            onFreePlay = { if (course.practisesProofs) picking = true else onPracticeSet() }, onRestart = vm::restart,
+            freePlayLabel = if (course.practisesProofs) "Free play this lesson" else "New practice set",
+        )
         if (picking) LevelPicker("Free play: ${lesson.title}", progress.course(course.id).level, { picking = false }) { picking = false; onFreePlay(it) }
         return
     }
@@ -125,6 +132,9 @@ fun LessonPlayerScreen(
                 is LessonStep.Table -> TableStep(vm, step, s.step)
                 is LessonStep.WorldStep -> WorldExplorer(vm, step, s.step)
                 is LessonStep.SolverStep -> SolverLessonStep(vm, step, s.step)
+                is LessonStep.TreeStep -> TreeLessonStep(vm, step, s.step)
+                is LessonStep.KripkeStep -> KripkeLessonStep(vm, step, s.step)
+                is LessonStep.TimelineStep -> TimelineLessonStep(vm, step, s.step)
                 is LessonStep.Guided -> BoardStep(vm, s.step, s.stepIndex == total - 1, coachFor(step, s.step), step.success)
                 is LessonStep.Practice -> BoardStep(vm, s.step, s.stepIndex == total - 1, step.prompt, "Proof complete. Nicely done.")
             }
@@ -252,6 +262,110 @@ private fun TableStep(vm: LessonViewModel, step: LessonStep.Table, st: StepState
         if (st.found) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
         else if (step.goal == TableGoal.COUNTEREXAMPLE && st.visited.size > 1)
             Text("Keep going: you need every premise TRUE and the conclusion FALSE at the same time.", style = MaterialTheme.typography.bodySmall, color = p.muted)
+    }
+}
+
+@Composable
+private fun TreeLessonStep(vm: LessonViewModel, step: LessonStep.TreeStep, st: StepState) {
+    val p = LocalPalette.current
+    val t = st.tree ?: return
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Eyebrow("Truth tree")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        FormulaText(step.premises.joinToString(",  ") + "   ∴ " + step.conclusion, style = FormulaStyle.copy(fontSize = 15.sp), color = p.muted)
+        Text("The tree starts with the premises and the negated conclusion: can they all be true together?", style = MaterialTheme.typography.bodySmall, color = p.muted)
+        Panel {
+            com.therefore.logic.ui.components.TreeBoard(t, onSelect = { vm.treeSelect(if (t.selected == it) null else it) }, onClose = vm::treeClose)
+        }
+        val sel = t.selected
+        if (sel != null && !t.finished) {
+            val n = t.node(sel)
+            Panel(color = p.accentSoft, border = false) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LogicText("Line ${sel + 1}: ${n.f.show()}. Stack it or branch it?", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { vm.treeDecompose(sel, com.therefore.logic.ext.Shape.STACK) }, Modifier.weight(1f)) { Text("Stack") }
+                        Button(onClick = { vm.treeDecompose(sel, com.therefore.logic.ext.Shape.BRANCH) }, Modifier.weight(1f)) { Text("Branch") }
+                    }
+                }
+            }
+        } else if (!t.finished) Text(
+            "Tap a line to break it down. Tap Close under a branch once it has a formula and its negation.",
+            style = MaterialTheme.typography.bodySmall, color = p.muted,
+        )
+        t.message?.let { Panel(color = if (t.messageBad) p.badSoft else p.sunk, border = false) { LogicText(it, color = p.ink) } }
+        if (t.finished && t.verdict == null) {
+            Text(
+                if (t.allClosed) "Every branch is closed." else "One branch is open with nothing left to break down.",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text("So is the argument valid?", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.treeJudge(true) }, Modifier.weight(1f)) { Text("Valid") }
+                OutlinedButton(onClick = { vm.treeJudge(false) }, Modifier.weight(1f)) { Text("Invalid") }
+            }
+        }
+        if (st.complete) {
+            val leaf = t.openComplete
+            if (leaf != null) {
+                val v = t.valuation(leaf).entries.joinToString(", ") { (l, b) -> "$l " + when (b) { true -> "true"; false -> "false"; null -> "either" } }
+                Panel(color = p.sunk, border = false) { LogicText("The open branch gives the counterexample: $v.", color = p.ink) }
+            }
+            Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
+        }
+    }
+}
+
+@Composable
+private fun KripkeLessonStep(vm: LessonViewModel, step: LessonStep.KripkeStep, st: StepState) {
+    val p = LocalPalette.current
+    val m = st.kripke ?: return
+    val intuitionistic = step.logic == com.therefore.logic.content.KLogic.INTUITIONISTIC
+    fun name(w: Int) = "w${w + 1}"
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Eyebrow(if (intuitionistic) "States of knowledge" else "Possible worlds")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        com.therefore.logic.ui.components.WorldsDiagram(m, ::name)
+        com.therefore.logic.ui.components.WorldControls(
+            m, ::name, arrowsEditable = !step.fixedArrows, arrowWord = if (intuitionistic) "a later state" else "which worlds a world sees",
+            onLetter = vm::toggleWorldLetter, onArrow = vm::toggleArrow,
+        )
+        Text(
+            if (intuitionistic) "Arrows lead to later states, where more is known. A letter switched on stays on in every later state."
+            else "□A: A is true in every world this one sees. ◇A: in at least one. Goals are about w1.",
+            style = MaterialTheme.typography.bodySmall, color = p.muted,
+        )
+        com.therefore.logic.ui.components.TruthGrid(step.formulas, (0 until m.n).map(::name)) { f, w -> vm.worldValue(step, f, m, w) }
+        val missing = step.frame.filter { !m.satisfies(it) }
+        if (missing.isNotEmpty()) Text(
+            "Only " + step.frame.joinToString(" and ") { it.label } + " models count here: " +
+                missing.joinToString("; ") { when (it) {
+                    com.therefore.logic.ext.FrameProp.REFLEXIVE -> "every world must see itself"
+                    com.therefore.logic.ext.FrameProp.SYMMETRIC -> "every arrow needs one back"
+                    com.therefore.logic.ext.FrameProp.TRANSITIVE -> "if a world sees one that sees another, it must see that one too"
+                } } + ".",
+            style = MaterialTheme.typography.bodySmall, color = p.hint,
+        )
+        if (step.impossible && !st.complete) OutlinedButton(onClick = vm::claimImpossible, enabled = st.tries >= 3, modifier = Modifier.fillMaxWidth()) {
+            Text(if (st.tries >= 3) "It can't be done" else "Try a few models first")
+        }
+        if (st.complete) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
+    }
+}
+
+@Composable
+private fun TimelineLessonStep(vm: LessonViewModel, step: LessonStep.TimelineStep, st: StepState) {
+    val p = LocalPalette.current
+    val trace = st.trace ?: return
+    val letters = step.formulas.flatMap { com.therefore.logic.ext.XParser.of(it).atoms() }.distinct().sorted()
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Eyebrow("Timeline")
+        LogicText(step.prompt, style = MaterialTheme.typography.titleMedium)
+        com.therefore.logic.ui.components.TimelineControls(trace, letters, vm::toggleMoment)
+        Text("□ always (from now on) · ◇ eventually · ○ at the next moment · A U B: B eventually, and A until then. Goals are about now.",
+            style = MaterialTheme.typography.bodySmall, color = p.muted)
+        com.therefore.logic.ui.components.TruthGrid(step.formulas, trace.indices.map { if (it == 0) "now" else "$it" }) { f, t -> vm.timelineValue(f, trace, t) }
+        if (st.complete) Panel(color = p.goodSoft, border = false) { LogicText(step.success, color = p.ink) }
     }
 }
 
@@ -418,7 +532,7 @@ private fun BoardStep(vm: LessonViewModel, st: StepState, last: Boolean, instruc
 }
 
 @Composable
-private fun LessonComplete(title: String, nextTitle: String?, onClose: () -> Unit, onNext: () -> Unit, onFreePlay: () -> Unit, onRestart: () -> Unit) {
+private fun LessonComplete(title: String, nextTitle: String?, onClose: () -> Unit, onNext: () -> Unit, onFreePlay: () -> Unit, onRestart: () -> Unit, freePlayLabel: String = "Free play this lesson") {
     val p = LocalPalette.current
     Column(
         Modifier.fillMaxSize().background(p.bg).verticalScroll(rememberScrollState()).padding(24.dp),
@@ -433,7 +547,7 @@ private fun LessonComplete(title: String, nextTitle: String?, onClose: () -> Uni
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text("Practise what you learned with free play, or keep going.", style = MaterialTheme.typography.bodyLarge, color = p.muted)
         Spacer(Modifier.height(8.dp))
-        Button(onClick = onFreePlay, Modifier.fillMaxWidth()) { Text("Free play this lesson") }
+        Button(onClick = onFreePlay, Modifier.fillMaxWidth()) { Text(freePlayLabel) }
         if (nextTitle != null) OutlinedButton(onClick = onNext, Modifier.fillMaxWidth()) { Text("Next lesson: $nextTitle") }
         OutlinedButton(onClick = onClose, Modifier.fillMaxWidth()) { Text("Back to the course") }
         TextButton(onClick = onRestart) { Text("Go through it again") }

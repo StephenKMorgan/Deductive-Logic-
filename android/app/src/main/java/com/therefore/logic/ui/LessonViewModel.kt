@@ -1,5 +1,6 @@
 package com.therefore.logic.ui
 
+import com.therefore.logic.ext.satisfies
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,7 +8,9 @@ import com.therefore.logic.TheApp
 import com.therefore.logic.content.Curriculum
 import com.therefore.logic.content.LessonDef
 import com.therefore.logic.content.LessonStep
+import com.therefore.logic.content.KLogic
 import com.therefore.logic.content.SolverGoal
+import com.therefore.logic.content.WorldsGoal
 import com.therefore.logic.content.TableGoal
 import com.therefore.logic.content.WorldGoal
 import com.therefore.logic.engine.World
@@ -40,6 +43,13 @@ data class StepState(
     /** Two-place relations: the ordered pairs (row thing, column thing) that are on. */
     val rels: Map<Char, Set<Pair<Int, Int>>> = emptyMap(),
     val worldsSeen: Set<String> = emptySet(),
+    /** A truth tree. */
+    val tree: com.therefore.logic.ext.TreeState? = null,
+    /** A possible-worlds model, and how many changes have been tried (for "it can't be done" steps). */
+    val kripke: com.therefore.logic.ext.Kripke? = null,
+    val tries: Int = 0,
+    /** A timeline: the letters true at each moment. */
+    val trace: List<Set<Char>>? = null,
     /** The solver board (DPLL by hand). */
     val solver: com.therefore.logic.games.SolverState? = null,
     /** Guided / practice proofs. */
@@ -83,6 +93,15 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
             val props = arity.filterValues { it == 1 }.keys.associateWith { emptySet<Int>() }
             val rels = arity.filterValues { it == 2 }.keys.associateWith { emptySet<Pair<Int, Int>>() }
             evaluateWorld(step, StepState(props = props, rels = rels, worldsSeen = setOf(worldKey(props, rels))))
+        }
+        is LessonStep.TreeStep -> StepState(tree = com.therefore.logic.ext.Trees.start(step.premises.map(::f), f(step.conclusion)))
+        is LessonStep.KripkeStep -> {
+            val letters = step.formulas.flatMap { com.therefore.logic.ext.XParser.of(it).atoms() }.toSortedSet()
+            evaluateKripke(step, StepState(kripke = com.therefore.logic.ext.Kripke(step.worlds, step.arrows, letters.associateWith { emptySet() })))
+        }
+        is LessonStep.TimelineStep -> {
+            val trace = List(step.moments) { t -> step.start.getOrElse(t) { "" }.toSet() }
+            evaluateTimeline(step, StepState(trace = trace))
         }
         is LessonStep.SolverStep -> StepState(solver = com.therefore.logic.games.SolverState(com.therefore.logic.games.Cnf.parse(step.clauses)))
         is LessonStep.Guided -> StepState(board = Session.newGame(courseId, 1, Mode.LESSON, step.puzzle(), Curriculum.boardRules(step.rules)))
@@ -157,6 +176,109 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         _state.value = s.copy(step = st)
     }
 
+    // ----- Truth trees -----
+
+    private fun tree(f: (com.therefore.logic.ext.TreeState) -> com.therefore.logic.ext.TreeState) {
+        val s = _state.value ?: return
+        val before = s.step.tree ?: return
+        if (s.step.complete) return
+        val after = f(before)
+        if (after == before) return
+        val done = after.verdict != null
+        when {
+            done -> c.haptics.solved()
+            after.mistakes > before.mistakes -> c.haptics.reject()
+            after.closed.size > before.closed.size -> c.haptics.accept()
+            else -> c.haptics.key()
+        }
+        _state.value = s.copy(step = s.step.copy(tree = after, complete = done))
+    }
+
+    fun treeSelect(id: Int?) = tree { com.therefore.logic.ext.Trees.select(it, id) }
+    fun treeDecompose(id: Int, shape: com.therefore.logic.ext.Shape) = tree { com.therefore.logic.ext.Trees.decompose(it, id, shape) }
+    fun treeClose(leaf: Int) = tree { com.therefore.logic.ext.Trees.close(it, leaf) }
+    fun treeJudge(valid: Boolean) = tree { com.therefore.logic.ext.Trees.judge(it, valid) }
+
+    // ----- Possible worlds -----
+
+    private fun kripkeMet(step: LessonStep.KripkeStep, m: com.therefore.logic.ext.Kripke): Boolean {
+        if (step.impossible) return false
+        if (!step.frame.all { m.satisfies(it) }) return false
+        val v = step.formulas.map { worldValue(step, it, m, 0) }
+        return when (step.goal) {
+            WorldsGoal.ALL_TRUE -> v.all { it }
+            WorldsGoal.FALSE -> !v[0]
+        }
+    }
+
+    fun worldValue(step: LessonStep.KripkeStep, formula: String, m: com.therefore.logic.ext.Kripke, w: Int): Boolean {
+        val x = com.therefore.logic.ext.XParser.of(formula)
+        return if (step.logic == KLogic.MODAL) com.therefore.logic.ext.Semantics.modal(x, m, w) else com.therefore.logic.ext.Semantics.intuitionistic(x, m, w)
+    }
+
+    private fun evaluateKripke(step: LessonStep.KripkeStep, st: StepState): StepState {
+        val met = kripkeMet(step, st.kripke!!)
+        return st.copy(found = st.found || met, complete = st.complete || met)
+    }
+
+    private fun kripke(change: (com.therefore.logic.ext.Kripke) -> com.therefore.logic.ext.Kripke) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.KripkeStep ?: return
+        val m = s.step.kripke ?: return
+        val st = evaluateKripke(step, s.step.copy(kripke = change(m), tries = s.step.tries + 1))
+        if (st.complete && !s.step.complete) c.haptics.solved() else c.haptics.key()
+        _state.value = s.copy(step = st)
+    }
+
+    /** Switches letter [p] at world [w]. In intuitionistic logic what's established stays established, so later worlds follow along. */
+    fun toggleWorldLetter(p: Char, w: Int) = kripke { m ->
+        val step = currentStep as LessonStep.KripkeStep
+        val cur = m.truth[p] ?: emptySet()
+        val on = w !in cur
+        val next = when {
+            step.logic == KLogic.INTUITIONISTIC && on -> cur + m.later(w)
+            step.logic == KLogic.INTUITIONISTIC -> cur - (0 until m.n).filter { w in m.later(it) }.toSet()
+            on -> cur + w
+            else -> cur - w
+        }
+        m.copy(truth = m.truth + (p to next))
+    }
+
+    fun toggleArrow(i: Int, j: Int) = kripke { m ->
+        val step = currentStep as LessonStep.KripkeStep
+        if (step.fixedArrows) m else m.copy(arrows = if ((i to j) in m.arrows) m.arrows - (i to j) else m.arrows + (i to j))
+    }
+
+    /** For an impossible goal: the learner says it can't be done, after trying a few models. */
+    fun claimImpossible() {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.KripkeStep ?: return
+        if (!step.impossible || s.step.tries < 3) return
+        c.haptics.solved()
+        _state.value = s.copy(step = s.step.copy(complete = true, found = true))
+    }
+
+    // ----- Timelines -----
+
+    fun timelineValue(formula: String, trace: List<Set<Char>>, t: Int) =
+        com.therefore.logic.ext.Semantics.temporal(com.therefore.logic.ext.XParser.of(formula), trace, t)
+
+    private fun evaluateTimeline(step: LessonStep.TimelineStep, st: StepState): StepState {
+        val v = step.formulas.map { timelineValue(it, st.trace!!, 0) }
+        val met = when (step.goal) { WorldsGoal.ALL_TRUE -> v.all { it }; WorldsGoal.FALSE -> !v[0] }
+        return st.copy(found = st.found || met, complete = st.complete || met)
+    }
+
+    fun toggleMoment(p: Char, t: Int) {
+        val s = _state.value ?: return
+        val step = currentStep as? LessonStep.TimelineStep ?: return
+        val trace = s.step.trace ?: return
+        val next = trace.mapIndexed { i, set -> if (i != t) set else if (p in set) set - p else set + p }
+        val st = evaluateTimeline(step, s.step.copy(trace = next))
+        if (st.complete && !s.step.complete) c.haptics.solved() else c.haptics.key()
+        _state.value = s.copy(step = st)
+    }
+
     // ----- The solver board -----
 
     private fun solver(f: (com.therefore.logic.games.SolverState) -> com.therefore.logic.games.SolverState) {
@@ -208,7 +330,9 @@ class LessonViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         val i = s.stepIndex + 1
         if (i >= lesson.steps.size) {
             _state.value = s.copy(finished = true)
-            viewModelScope.launch(Dispatchers.IO) { c.db.lessons().markDone(LessonDone(lesson.id, System.currentTimeMillis())) }
+            // Practice sets are generated fresh each time, so they don't count as finished lessons.
+            if (!Curriculum.isPracticeSet(lesson.id))
+                viewModelScope.launch(Dispatchers.IO) { c.db.lessons().markDone(LessonDone(lesson.id, System.currentTimeMillis())) }
         } else {
             _state.value = s.copy(stepIndex = i, step = initial(lesson.steps[i]))
         }

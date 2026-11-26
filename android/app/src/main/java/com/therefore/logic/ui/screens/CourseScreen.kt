@@ -64,6 +64,8 @@ sealed interface CourseAction {
     data object Practice : CourseAction
     data class Lesson(val lessonId: String) : CourseAction
     data class FreePlay(val lessonId: String?, val level: Int) : CourseAction
+    /** A freshly generated set of exercises (courses not practised with proofs). */
+    data object PracticeSet : CourseAction
 }
 
 @Composable
@@ -73,7 +75,7 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
     val stats = progress.course(courseId)
     val n = when (c.track) {
         com.therefore.logic.content.Track.PREDICATE -> Curriculum.predicateCourses.indexOf(c) + 1
-        com.therefore.logic.content.Track.COMPUTING -> Curriculum.courses.size + Curriculum.computingCourses.indexOf(c) + 1
+        com.therefore.logic.content.Track.EXTRA -> Curriculum.courses.size + Curriculum.extraCourses.indexOf(c) + 1
         else -> Curriculum.courses.indexOf(c) + 1
     }
     // Free play dialog: which lesson (null = whole course).
@@ -89,7 +91,7 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
                     Text(
                         when {
                             c.track == com.therefore.logic.content.Track.PREDICATE -> "Predicate course $n"
-                            c.track == com.therefore.logic.content.Track.COMPUTING -> "Computer logic · course $n"
+                            c.track == com.therefore.logic.content.Track.EXTRA -> "Course $n"
                             c.advanced -> "Advanced course $n"
                             else -> "Course $n"
                         },
@@ -106,12 +108,24 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
                     Text(c.blurb, style = MaterialTheme.typography.bodyLarge, color = p.muted)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
                         Tag(c.short)
-                        Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
-                        Text("Level ${stats.level} of 5", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        if (c.practisesProofs) {
+                            Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
+                            Text("Level ${stats.level} of 5", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        }
                     }
                 }
             }
-            item {
+            if (!c.practisesProofs) item {
+                Column(
+                    Modifier.fillMaxWidth().clip(CardShape).background(p.accentSoft).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Eyebrow("Practice")
+                    Text("A fresh set of generated exercises, different every time.", style = MaterialTheme.typography.titleSmall)
+                    Button(onClick = { onAction(CourseAction.PracticeSet) }, Modifier.fillMaxWidth()) { Text("New practice set") }
+                }
+            }
+            if (c.practisesProofs) item {
                 Column(
                     Modifier.fillMaxWidth().clip(CardShape).background(p.accentSoft).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -135,12 +149,12 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
             item { SectionTitle("Lessons") }
             itemsIndexed(c.lessons) { i, lesson ->
                 LessonCard(
-                    i + 1, lesson, lesson.id in progress.lessonsDone,
+                    i + 1, lesson, lesson.id in progress.lessonsDone, freePlay = c.practisesProofs,
                     onStart = { onAction(CourseAction.Lesson(lesson.id)) },
                     onFreePlay = { freePlayFor = lesson.id; freePlayOpen = true },
                 )
             }
-            item {
+            if (c.practisesProofs) item {
                 OutlinedButton(onClick = { freePlayFor = null; freePlayOpen = true }, Modifier.fillMaxWidth()) {
                     Text("Free play with every rule in this course")
                 }
@@ -160,7 +174,7 @@ fun CourseScreen(courseId: String, progress: Progress, resumeLabel: String?, onB
 }
 
 @Composable
-private fun LessonCard(n: Int, lesson: LessonDef, done: Boolean, onStart: () -> Unit, onFreePlay: () -> Unit) {
+private fun LessonCard(n: Int, lesson: LessonDef, done: Boolean, freePlay: Boolean, onStart: () -> Unit, onFreePlay: () -> Unit) {
     val p = LocalPalette.current
     Column(
         Modifier.fillMaxWidth().clip(CardShape).background(p.surface).border(1.dp, if (done) p.good.copy(alpha = 0.5f) else p.line, CardShape).padding(14.dp),
@@ -181,7 +195,7 @@ private fun LessonCard(n: Int, lesson: LessonDef, done: Boolean, onStart: () -> 
             Button(onClick = onStart, Modifier.weight(1f).semantics { contentDescription = "${if (done) "Review" else "Start"} lesson: ${lesson.title}" }) {
                 Text(if (done) "Review" else "Start")
             }
-            OutlinedButton(onClick = onFreePlay, Modifier.weight(1f).semantics { contentDescription = "Free play: ${lesson.title}" }) { Text("Free play") }
+            if (freePlay) OutlinedButton(onClick = onFreePlay, Modifier.weight(1f).semantics { contentDescription = "Free play: ${lesson.title}" }) { Text("Free play") }
         }
     }
 }

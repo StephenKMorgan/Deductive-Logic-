@@ -19,6 +19,17 @@ enum class TableGoal {
     ALL_TRUE,
 }
 
+/** What a worlds or timeline explorer asks for, judged at the first world (w1) or at moment 0. */
+enum class WorldsGoal {
+    /** Every formula true. */
+    ALL_TRUE,
+    /** The (single) formula false. */
+    FALSE,
+}
+
+/** How a worlds explorer reads its formulas: modal logic (□ ◇) or intuitionistic logic (states of knowledge). */
+enum class KLogic { MODAL, INTUITIONISTIC }
+
 enum class SolverGoal {
     /** Satisfy every clause. */
     SATISFY,
@@ -83,6 +94,48 @@ sealed interface LessonStep {
         val goal: SolverGoal,
         val propagateAll: Boolean,
         val maxGuesses: Int? = null,
+        val success: String,
+    ) : LessonStep
+
+    /** A truth tree for an argument: break formulas down, close branches, then say whether it's valid. */
+    data class TreeStep(
+        override val title: String,
+        val prompt: String,
+        val premises: List<String>,
+        val conclusion: String,
+        /** What the finished tree should show (checked by tests). */
+        val valid: Boolean,
+        val success: String,
+    ) : LessonStep
+
+    /**
+     * Possible worlds: tap letters on and off in each world and (unless [fixedArrows]) draw arrows between them.
+     * [frame] lists arrow patterns a model must have to count. With [impossible], the goal can't be met, and the
+     * learner finishes by saying so after trying a few models.
+     */
+    data class KripkeStep(
+        override val title: String,
+        val prompt: String,
+        val worlds: Int,
+        val formulas: List<String>,
+        val goal: WorldsGoal,
+        val logic: KLogic = KLogic.MODAL,
+        val arrows: Set<Pair<Int, Int>> = emptySet(),
+        val fixedArrows: Boolean = false,
+        val frame: Set<com.therefore.logic.ext.FrameProp> = emptySet(),
+        val impossible: Boolean = false,
+        val success: String,
+    ) : LessonStep
+
+    /** A timeline of moments: tap letters on and off at each moment, and watch temporal formulas at moment 0. */
+    data class TimelineStep(
+        override val title: String,
+        val prompt: String,
+        val moments: Int,
+        val formulas: List<String>,
+        val goal: WorldsGoal,
+        /** Letters true at each moment to start with, like listOf("P", "PQ", ""). */
+        val start: List<String> = emptyList(),
         val success: String,
     ) : LessonStep
 

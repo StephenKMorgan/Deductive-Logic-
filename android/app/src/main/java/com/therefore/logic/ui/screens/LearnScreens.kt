@@ -146,17 +146,23 @@ fun HomeScreen(
             }
             CourseRow(i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
         }
-        item {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)) {
-                SectionTitle("How computers do logic")
-                Text("Programs called SAT solvers check logic at a scale no person could. Learn the shape they use, their one rule, and how they search.", style = MaterialTheme.typography.bodyMedium, color = p.muted)
+        itemsIndexed(Curriculum.extraCourses) { i, c ->
+            if (i == 0 || Curriculum.extraCourses[i - 1].section != c.section) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)) {
+                    SectionTitle(c.section ?: "")
+                    SECTION_ABOUT[c.section]?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = p.muted) }
+                }
             }
-        }
-        itemsIndexed(Curriculum.computingCourses) { i, c ->
             CourseRow(Curriculum.courses.size + i + 1, c, progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { onCourse(c.id) }
         }
     }
 }
+
+private val SECTION_ABOUT = mapOf(
+    Curriculum.SECTION_COMPUTERS to "Programs called SAT solvers check logic at a scale no person could. Learn the shape they use, their one rule, and how they search.",
+    Curriculum.SECTION_TREES to "Truth trees test an argument by searching for a counterexample, one branch at a time.",
+    Curriculum.SECTION_NEW to "Logic about what must be, what will be, and what can be shown.",
+)
 
 @Composable
 private fun CardRow(onClick: () -> Unit, bg: Color = LocalPalette.current.surface, border: Color = LocalPalette.current.line, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
@@ -184,7 +190,7 @@ private fun CourseRow(n: Int, c: Course, progress: Progress, modifier: Modifier,
             Text(c.blurb, style = MaterialTheme.typography.bodyMedium, color = p.muted)
             FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
                 Tag(c.short)
-                Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
+                if (c.practisesProofs) Box(Modifier.padding(top = 5.dp)) { LevelDots(stats.level) }
                 val done = c.lessons.count { it.id in progress.lessonsDone }
                 Text("$done/${c.lessons.size} lessons", style = MaterialTheme.typography.bodySmall, color = p.muted)
                 if (stats.solved > 0) Text("${stats.solved} solved", style = MaterialTheme.typography.bodySmall, color = p.muted)

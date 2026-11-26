@@ -153,6 +153,7 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                         CourseAction.Practice -> play(id, Mode.PRACTICE)
                         is CourseAction.Lesson -> nav.navigate(Routes.lesson(action.lessonId))
                         is CourseAction.FreePlay -> play(id, Mode.FREE, action.level, action.lessonId, fresh = true)
+                        CourseAction.PracticeSet -> nav.navigate(Routes.lesson(Curriculum.practiceSetId(id, System.nanoTime() and 0xFFFFFFFFFFL)))
                     }
                 }
             }
@@ -167,6 +168,9 @@ fun ThereforeApp(vm: GameViewModel, settings: Settings, openDaily: Boolean) {
                     onClose = { nav.popBackStack() },
                     onNextLesson = { next -> nav.navigate(Routes.lesson(next)) { popUpTo(Routes.course(courseId)) } },
                     onFreePlay = { level -> play(courseId, Mode.FREE, level, id, fresh = true) },
+                    onPracticeSet = {
+                        nav.navigate(Routes.lesson(Curriculum.practiceSetId(courseId, System.nanoTime() and 0xFFFFFFFFFFL))) { popUpTo(Routes.course(courseId)) }
+                    },
                 )
             }
             // These screens redirect when their game is missing or finished, but only while they are the
