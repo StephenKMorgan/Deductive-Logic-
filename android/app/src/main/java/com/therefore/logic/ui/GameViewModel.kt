@@ -117,7 +117,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app), BoardActions {
         }
         val spec = course.specFor(lesson)
         val puzzle = withContext(Dispatchers.Default) { Generator.generate(spec, lvl, seed) }
-        val s = Session.newGame(courseId, lvl, mode, puzzle, Curriculum.boardRules(course.spec.rules), if (mode == Mode.DAILY) today else null, lessonId)
+        val s = Session.newGame(courseId, lvl, mode, puzzle, Curriculum.playRules(course), if (mode == Mode.DAILY) today else null, lessonId)
         _state.value = s
         persist(s)
     }

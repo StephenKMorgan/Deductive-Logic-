@@ -226,6 +226,18 @@ class EngineTest {
         assertEquals(40L, Stats.median(listOf(30L, 40L, 100_000L)))   // one overnight solve doesn't move it
     }
 
+    @Test fun predicateCoursesOfferEveryPropositionalRule() {
+        for (c in Curriculum.allCourses) {
+            val rules = Curriculum.playRules(c)
+            if (c.spec.rules.none { it.isQuantifierRule || it.isIdentityRule }) continue
+            for (r in listOf(Rule.Com, Rule.DeM, Rule.CD, Rule.Taut, Rule.ACP, Rule.CP, Rule.AIP, Rule.IP)) assertTrue("${c.id} $r", r in rules)
+            assertTrue(c.id, c.spec.rules.filter { it.isQuantifierRule }.all { it in rules })
+        }
+        // Commutation on a line with a free variable, and inside a quantifier.
+        assertTrue(Checker.check(Rule.Com, listOf(p("~Fx & Gx")), p("Gx & ~Fx")).ok)
+        assertTrue(Checker.check(Rule.Com, listOf(p("∀x(~Fx & Gx)")), p("∀x(Gx & ~Fx)")).ok)
+    }
+
     @Test fun contradictionsAreFlagged() {
         val lines = listOf(ProofLine(p("Q"), null), ProofLine(p("P"), Rule.AIP), ProofLine(p("~Q"), Rule.MP, listOf(1, 2)))
         val c = Proofs.contradictions(lines)

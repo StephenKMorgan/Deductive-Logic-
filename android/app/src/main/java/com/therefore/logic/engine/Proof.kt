@@ -274,6 +274,14 @@ object Proofs {
             Rule.AIP -> "Suppose ${line.formula}, the opposite of what we want, and look for a contradiction."
             Rule.CP -> "Lines ${l[0]}–${l[1]} show that assuming ${(line.formula as? Formula.Bin)?.a} leads to ${(line.formula as? Formula.Bin)?.b}. So the conditional is proved, and the assumption is closed."
             Rule.IP -> "The assumption on line ${l[0]} led to a contradiction, so it must be false. That proves ${line.formula}."
+            Rule.UI -> "Line ${l[0]} holds for everything, so it holds for this one in particular: drop the ∀ and fill in the name or variable."
+            Rule.EG -> "Line ${l[0]} is true of a particular thing, so something has that property: replace it with a variable and add ∃."
+            Rule.EI -> "Line ${l[0]} says something fits. Give that something a new name that hasn't been used yet, and drop the ∃."
+            Rule.UG -> "Line ${l[0]} was shown for an arbitrary x, with nothing special assumed about it, so it holds for everything: add ∀."
+            Rule.QN -> "Quantifier Negation moves the ¬ across the quantifier and flips ∀ and ∃, turning line ${l[0]} into this equivalent form."
+            Rule.IdR -> "Everything is identical to itself, so this line needs no citation."
+            Rule.IdS -> "Identity works both ways: if a = b, then b = a."
+            Rule.Id -> "Lines ${l[0]} and ${l[1]} name the same thing, so one name can replace the other."
             else -> {
                 val how = when (line.rule) {
                     Rule.DN -> "adds or removes a double negation"
@@ -285,7 +293,8 @@ object Proofs {
                     Rule.Impl -> "rewrites a conditional as an \"or\" (or back again)"
                     Rule.Equiv -> "unpacks or repacks the biconditional"
                     Rule.Exp -> "moves between (P ∧ Q) → R and P → (Q → R)"
-                    else -> "removes or adds a repeated part"
+                    Rule.Taut -> "removes or adds a repeated part"
+                    else -> "rewrites it"
                 }
                 "${line.rule!!.title} $how, turning line ${l[0]} into this equivalent form."
             }

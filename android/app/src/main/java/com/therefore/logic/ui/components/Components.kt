@@ -140,7 +140,7 @@ fun RuleCard(rule: Rule, modifier: Modifier = Modifier) {
 /** One row of a proof: number, formula, justification, and an optional explanation. */
 data class LedgerRow(val formula: String, val justification: String, val explanation: String? = null, val premise: Boolean = false, val depth: Int = 0)
 
-/** The textbook proof layout. The conclusion is shown after the last premise, like "Premise ∴ ¬Q". */
+/** The textbook proof layout. The conclusion is shown under the last premise, like "∴ ¬Q". */
 @Composable
 fun Ledger(rows: List<LedgerRow>, conclusion: String?, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
@@ -156,12 +156,14 @@ fun Ledger(rows: List<LedgerRow>, conclusion: String?, modifier: Modifier = Modi
                         repeat(r.depth) { Text("│ ", style = FormulaStyle, color = p.accent) }
                     }
                     FormulaText(r.formula, Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(r.justification, style = FormulaStyle.copy(fontSize = 13.sp), color = p.muted)
-                        if (i == lastPremise && conclusion != null)
-                            FormulaText("∴ $conclusion", style = FormulaStyle.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold), color = p.accent)
-                    }
+                    Text(r.justification, Modifier.padding(start = 8.dp), style = FormulaStyle.copy(fontSize = 13.sp), color = p.muted)
                 }
+                // On its own line, so a long conclusion never squeezes the premise beside it.
+                if (i == lastPremise && conclusion != null)
+                    FormulaText(
+                        "∴ $conclusion", Modifier.fillMaxWidth().padding(start = 38.dp, top = 2.dp),
+                        style = FormulaStyle.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End), color = p.accent,
+                    )
                 if (r.explanation != null)
                     LogicText(r.explanation, Modifier.padding(start = 38.dp, top = 2.dp), style = MaterialTheme.typography.bodySmall, color = p.muted)
             }

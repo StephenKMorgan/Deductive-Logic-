@@ -1182,4 +1182,16 @@ object Curriculum {
 
     /** All rules a board should offer, in menu order. */
     fun boardRules(rules: List<Rule>): List<Rule> = Rule.entries.filter { it in rules }
+
+    /**
+     * Rules offered when playing a course's puzzles (practice, free play, daily). Propositional courses keep to what
+     * they teach. Predicate courses come after all of propositional logic, so they offer every propositional rule,
+     * plus the course's own quantifier and identity rules.
+     */
+    fun playRules(course: Course): List<Rule> {
+        val own = course.spec.rules
+        val predicate = own.any { it.isQuantifierRule || it.isIdentityRule }
+        return if (!predicate) boardRules(own)
+        else Rule.entries.filter { it in own || !(it.isQuantifierRule || it.isIdentityRule) }
+    }
 }

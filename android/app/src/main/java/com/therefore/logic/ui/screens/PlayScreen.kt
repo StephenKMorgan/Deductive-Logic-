@@ -227,7 +227,7 @@ fun ProofList(vm: BoardActions, s: GameState, modifier: Modifier, showGoal: Bool
 @Composable
 fun Composer(vm: BoardActions, s: GameState) {
     val p = LocalPalette.current
-    val rules = s.rules.ifEmpty { Curriculum.boardRules(Curriculum.byId(s.courseId).spec.rules) }
+    val rules = s.rules.ifEmpty { Curriculum.playRules(Curriculum.byId(s.courseId)) }
     Column(
         Modifier
             .fillMaxWidth()
