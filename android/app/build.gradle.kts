@@ -14,8 +14,10 @@ android {
         applicationId = "com.therefore.logic"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "3.0"
+        // Releases set these from the version number (see .github/workflows/release.yml): 3.1.0 -> 30100.
+        // It must go up every release or Android refuses the update.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 3
+        versionName = System.getenv("VERSION_NAME") ?: "3.0-dev"
     }
 
     signingConfigs {
